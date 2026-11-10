@@ -7,6 +7,7 @@ import { messageFor } from '@/app/lib/http';
 import { publicOrigin } from '@/app/lib/origin';
 import { clearSessionCookie, requireUser, setSessionCookie } from '@/app/lib/session';
 import { getApp } from '@/composition-root';
+import { validatePartner } from '@/core/pacts';
 import { DomainError, fromDecimalString } from '@/core/shared';
 
 const withError = (path: string, error: unknown) => `${path}?error=${encodeURIComponent(messageFor(error))}`;
@@ -66,7 +67,29 @@ export async function createGoalAction(_previous: FormState, form: FormData): Pr
     } catch {
       throw new DomainError('VALIDATION', 'Enter the stake as dollars and cents, for example 20 or 20.50.');
     }
-    goalId = (await getApp().goals.createGoal({ userId: user.id, text, deadline, stakeCents })).id;
+    const app = getApp();
+    // Check the partner first, so a typo there does not leave a goal behind without its pact.
+    const partner =
+      form.get('destination') === 'partner'
+        ? validatePartner(
+            { partnerName: String(form.get('partnerName') ?? ''), partnerEmail: String(form.get('partnerEmail') ?? '') },
+            user.email,
+          )
+        : null;
+    const goal = await app.goals.createGoal({ userId: user.id, text, deadline, stakeCents });
+    goalId = goal.id;
+    if (partner) {
+      await app.pacts.propose({
+        goalId,
+        userId: user.id,
+        ownerName: user.name,
+        ownerEmail: user.email,
+        ...partner,
+        goalText: goal.text,
+        deadline: goal.deadline,
+        stake: goal.stake,
+      });
+    }
   } catch (error) {
     return { error: messageFor(error), values: { text, stake } };
   }

@@ -9,7 +9,9 @@ import {
   regenerateRulesAction,
   retrySettlementAction,
 } from '@/app/actions';
+import { headers } from 'next/headers';
 import { formatMoney } from '@/app/lib/format';
+import { publicOrigin } from '@/app/lib/origin';
 import { requireUser } from '@/app/lib/session';
 import { AppShell } from '@/app/ui/app-shell';
 import { AutoRefresh, RefreshAt } from '@/app/ui/auto-refresh';
@@ -19,12 +21,14 @@ import { CountedTextarea } from '@/app/ui/counted-textarea';
 import { StateChip } from '@/app/ui/goal-view';
 import { Icon } from '@/app/ui/symbol';
 import { Findings, RulesList } from '@/app/ui/findings';
+import { PayoutLine } from '@/app/ui/pact-status';
 import { PayPalHoldButton } from '@/app/ui/paypal-hold-button';
 import { ProofUploadForm } from '@/app/ui/proof-upload-form';
 import { SubmitButton } from '@/app/ui/submit-button';
 import { Countdown, LocalTime, TimeRing } from '@/app/ui/time';
 import { getApp } from '@/composition-root';
 import { isExpiredWithoutHold, type Goal, type GoalState } from '@/core/goals';
+import type { Pact } from '@/core/pacts';
 import { MAX_PROOF_ATTEMPTS } from '@/core/proof-intake';
 import { decideSettlement, type StakeRecord } from '@/core/settlement';
 import { isDomainError, usd, type ProofRules, type Verdict } from '@/core/shared';
@@ -174,8 +178,85 @@ function Receipt({ goal, stake }: { goal: Goal; stake: StakeRecord }) {
   );
 }
 
-function Outcome({ goal, stake }: { goal: Goal; stake: StakeRecord | null }) {
+/** The agreement with the person who receives a lost stake, and where that money is. */
+function PactCard({ pact, inviteUrl }: { pact: Pact; inviteUrl: string }) {
+  const settled = pact.outcome === 'KEPT' || pact.outcome === 'LOST' || pact.outcome === 'REFUNDED';
+  const chip =
+    pact.status === 'ACCEPTED'
+      ? { label: 'Accepted', icon: 'check_circle', tone: 'good' }
+      : pact.status === 'DECLINED'
+        ? { label: 'Declined', icon: 'cancel', tone: '' }
+        : { label: settled ? 'Not accepted' : 'Waiting for them', icon: 'hourglass_top', tone: settled ? '' : 'warn' };
+  return (
+    <section className="card outlined stack" aria-labelledby="pact-heading">
+      <div className="row spread wrap">
+        <h2 id="pact-heading" className="title row">
+          <Icon name="handshake" />
+          Pact with {pact.partnerName}
+        </h2>
+        <span className={`chip ${chip.tone}`}>
+          <Icon name={chip.icon} className="small" />
+          {chip.label}
+        </span>
+      </div>
+
+      {pact.status === 'INVITED' && !settled ? (
+        <>
+          <p className="body-small">
+            Send {pact.partnerName} this link. Until they accept, a lost stake goes to the charity pool instead.
+          </p>
+          <p className="invite-link">{inviteUrl}</p>
+          <div>
+            <CopyButton value={inviteUrl} label="Copy invite link" />
+          </div>
+        </>
+      ) : null}
+      {pact.status === 'INVITED' && settled ? (
+        <p className="body-small muted">{pact.partnerName} did not accept in time, so the pact did not apply to this goal.</p>
+      ) : null}
+      {pact.status === 'DECLINED' ? (
+        <p className="body-small muted">{pact.partnerName} declined. A lost stake goes to the charity pool.</p>
+      ) : null}
+      {pact.status === 'ACCEPTED' && !settled ? (
+        <p className="body-small">
+          If you miss this goal, the charge goes to {pact.partnerName}. They cannot see or judge your proof.
+        </p>
+      ) : null}
+      {pact.status === 'ACCEPTED' && pact.outcome === 'KEPT' ? (
+        <p className="body-small muted">You met the goal, so nothing goes to {pact.partnerName}.</p>
+      ) : null}
+
+      {pact.nudge ? (
+        <figure className="stack" style={{ gap: 4, margin: 0 }}>
+          <blockquote className="quote">{pact.nudge.text}</blockquote>
+          <figcaption className="body-small muted">From {pact.partnerName}</figcaption>
+        </figure>
+      ) : null}
+
+      {pact.payout ? (
+        <div className="body-small stack" style={{ gap: 8 }}>
+          <PayoutLine pact={pact} viewer="owner" />
+          {pact.payout.payoutId ? (
+            <dl className="kv">
+              <dt>Payout ID</dt>
+              <dd className="id">{pact.payout.payoutId}</dd>
+            </dl>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function Outcome({ goal, stake, pact }: { goal: Goal; stake: StakeRecord | null; pact: Pact | null }) {
   const captured = stake?.capturedAmount ?? usd(0);
+  const payout = pact?.payout;
+  const destination =
+    payout?.status === 'SENT'
+      ? `went to ${pact!.partnerName}`
+      : payout && payout.status !== 'CANCELLED'
+        ? `is set aside for ${pact!.partnerName}`
+        : 'went to the charity pool';
   const released = usd(goal.stake.cents - captured.cents);
   switch (goal.state) {
     case 'SETTLED_RELEASED':
@@ -192,7 +273,7 @@ function Outcome({ goal, stake }: { goal: Goal; stake: StakeRecord | null }) {
           <Icon name="incomplete_circle" className="large" />
           <h2 className="headline">Partly met: {formatMoney(captured)} charged</h2>
           <p>
-            {formatMoney(captured)} went to the charity pool. The other {formatMoney(released)} was released back to you.
+            {formatMoney(captured)} {destination}. The other {formatMoney(released)} was released back to you.
           </p>
         </section>
       );
@@ -201,7 +282,7 @@ function Outcome({ goal, stake }: { goal: Goal; stake: StakeRecord | null }) {
         <section className="hero error stack">
           <Icon name="money_off" className="large" />
           <h2 className="headline">{formatMoney(captured)} charged</h2>
-          <p>The goal was not met by the deadline, so the full stake went to the charity pool.</p>
+          <p>The goal was not met by the deadline, so the full stake {destination}.</p>
         </section>
       );
     case 'REFUNDED':
@@ -232,6 +313,9 @@ export default async function GoalPage({
 
   const goal = await orNull(app.goals.getOwnedGoal(user.id, id));
   if (!goal) notFound();
+  const pact = await app.pacts.getForGoal(id);
+  const inviteUrl = pact ? `${publicOrigin(await headers())}/pact/${pact.token}` : '';
+  const payoutDue = pact?.payout?.status === 'SCHEDULED' ? pact.payout.dueAt.toISOString() : null;
   const [rulesRecord, slot, stake, verdict, cases] = await Promise.all([
     orNull(app.proofRules.getRules(id)),
     orNull(app.proofIntake.getProofSlot(id)),
@@ -532,14 +616,21 @@ export default async function GoalPage({
             </section>
           ) : null}
 
-          <Outcome goal={goal} stake={stake} />
+          <Outcome goal={goal} stake={stake} pact={pact} />
+          {payoutDue ? <RefreshAt iso={payoutDue} delayMs={35_000} /> : null}
 
-          {charged && !appeal ? (
+          {charged && !appeal && pact?.payout?.status !== 'SENT' ? (
             <section className="card outlined stack">
               <h2 className="title">Think this is wrong?</h2>
               <p className="body-small muted">
                 Tell a reviewer why. If they agree, the {formatMoney(goal.capture?.amount ?? goal.stake)} charge is
                 refunded. You can appeal once per goal.
+                {payoutDue ? (
+                  <>
+                    {' '}Appeal before <LocalTime iso={payoutDue} />: after that the money is sent to {pact!.partnerName} and
+                    cannot be refunded.
+                  </>
+                ) : null}
               </p>
               <form action={fileAppealAction.bind(null, goal.id)} className="stack">
                 <CountedTextarea
@@ -605,6 +696,8 @@ export default async function GoalPage({
               <img src={slot.proof.url} alt="The proof photo you uploaded" style={{ width: '100%', borderRadius: 12 }} />
             </section>
           ) : null}
+
+          {pact ? <PactCard pact={pact} inviteUrl={inviteUrl} /> : null}
 
           {stake && holdExists ? <Receipt goal={goal} stake={stake} /> : null}
         </div>

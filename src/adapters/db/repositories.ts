@@ -1,5 +1,6 @@
 import type { Session, SessionRepository, User, UserRepository } from '../../core/accounts';
 import type { CaptureRecord, ReviewCase, ReviewRepository } from '../../core/appeals';
+import { isPayoutOpen, type Pact, type PactRepository } from '../../core/pacts';
 import type { Goal, GoalRepository } from '../../core/goals';
 import type { ProofRepository, ProofSlot } from '../../core/proof-intake';
 import type { RulesRecord, RulesRepository } from '../../core/proof-rules';
@@ -277,8 +278,37 @@ export class SqliteSavedMethodRepository implements SavedMethodRepository {
   }
 }
 
+export class SqlitePactRepository implements PactRepository {
+  constructor(private readonly db: Db) {}
+
+  async get(goalId: string) {
+    const row = this.db.prepare('SELECT data FROM pacts WHERE goal_id = ?').get(goalId) as Row | undefined;
+    return row ? decode<Pact>(row.data) : null;
+  }
+
+  async getByToken(token: string) {
+    const row = this.db.prepare('SELECT data FROM pacts WHERE token = ?').get(token) as Row | undefined;
+    return row ? decode<Pact>(row.data) : null;
+  }
+
+  async save(pact: Pact) {
+    this.db
+      .prepare(
+        `INSERT INTO pacts (goal_id, token, payout_open, data) VALUES (?, ?, ?, ?)
+         ON CONFLICT (goal_id) DO UPDATE SET payout_open = excluded.payout_open, data = excluded.data`,
+      )
+      .run(pact.goalId, pact.token, isPayoutOpen(pact.payout) ? 1 : 0, encode(pact));
+  }
+
+  async listOpenPayouts() {
+    const rows = this.db.prepare('SELECT data FROM pacts WHERE payout_open = 1').all() as Row[];
+    return rows.map((row) => decode<Pact>(row.data));
+  }
+}
+
 export function createSqliteRepositories(db: Db) {
   return {
+    pactRepository: new SqlitePactRepository(db),
     savedMethodRepository: new SqliteSavedMethodRepository(db),
     userRepository: new SqliteUserRepository(db),
     sessionRepository: new SqliteSessionRepository(db),

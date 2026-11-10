@@ -2,3 +2,4 @@ export { PayPalApiError, PayPalClient, PayPalNotConfiguredError, type PayPalConf
 export { PayPalRefunds } from './paypal-refunds';
 export { PayPalStakeHolds } from './paypal-stake-holds';
 export { PayPalMethodVault } from './paypal-method-vault';
+export { PayPalPayouts, toPayoutStatus } from './paypal-payouts';

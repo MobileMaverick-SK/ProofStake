@@ -102,7 +102,7 @@ export default async function AccountPage({
           </li>
           <li>
             <Icon name="volunteer_activism" />
-            <p className="grow">Charged stakes go to the charity pool, never to other users.</p>
+            <p className="grow">Charged stakes go to the charity pool, or to the pact partner you chose for that goal.</p>
           </li>
         </ul>
       </section>

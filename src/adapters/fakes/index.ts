@@ -2,6 +2,7 @@ import type { DomainEvent } from '../../core/shared';
 import { RandomSessionTokens, ScryptPasswordHasher } from '../auth';
 import { InProcessEventBus } from '../events/in-process-event-bus';
 import { FakeClock } from './fake-clock';
+import { FakePayouts } from './fake-payouts';
 import { FakeProofStore } from './fake-proof-store';
 import { FakeProofVerifier } from './fake-proof-verifier';
 import { FakeRefunds } from './fake-refunds';
@@ -9,6 +10,7 @@ import { FakeRuleWriter } from './fake-rule-writer';
 import { FakeStakeHolds } from './fake-stake-holds';
 import {
   InMemoryGoalRepository,
+  InMemoryPactRepository,
   InMemoryProofRepository,
   InMemoryReviewRepository,
   InMemoryRulesRepository,
@@ -20,6 +22,7 @@ import {
 } from './in-memory-repositories';
 
 export * from './fake-clock';
+export * from './fake-payouts';
 export * from './fake-proof-store';
 export * from './fake-proof-verifier';
 export * from './fake-refunds';
@@ -52,6 +55,8 @@ export function createFakePorts() {
     stakeHolds,
     methodVault: stakeHolds,
     refunds: new FakeRefunds(),
+    pactRepository: new InMemoryPactRepository(),
+    payouts: new FakePayouts(),
   };
 }
 export type FakePorts = ReturnType<typeof createFakePorts>;

@@ -38,7 +38,11 @@ export type DomainEvent =
       /** true when only part of the stake was captured and the rest was released */
       partial: boolean;
     }
-  | { type: 'AppealUpheld'; goalId: string; refundId: string; amount: Money };
+  | { type: 'AppealFiled'; goalId: string }
+  | { type: 'AppealRejected'; goalId: string }
+  | { type: 'AppealUpheld'; goalId: string; refundId: string; amount: Money }
+  /** A captured stake was sent on to the user's pact partner. After this it can no longer be refunded. */
+  | { type: 'StakePaidOut'; goalId: string; payoutId: string; amount: Money };
 
 export type EventType = DomainEvent['type'];
 export type EventOf<T extends EventType> = Extract<DomainEvent, { type: T }>;

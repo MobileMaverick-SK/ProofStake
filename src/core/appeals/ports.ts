@@ -26,6 +26,8 @@ export interface CaptureRecord {
   goalId: string;
   captureId: string;
   amount: Money;
+  /** the money was passed on to a pact partner, so it can no longer be refunded */
+  paidOut?: boolean;
 }
 
 export interface ReviewRepository {

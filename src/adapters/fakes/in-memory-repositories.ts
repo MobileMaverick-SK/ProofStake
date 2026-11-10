@@ -1,6 +1,7 @@
 import type { Verdict } from '../../core/shared';
 import type { Session, SessionRepository, User, UserRepository } from '../../core/accounts';
 import type { CaptureRecord, ReviewCase, ReviewRepository } from '../../core/appeals';
+import { isPayoutOpen, type Pact, type PactRepository } from '../../core/pacts';
 import type { Goal, GoalRepository } from '../../core/goals';
 import type { ProofRepository, ProofSlot } from '../../core/proof-intake';
 import type { RulesRecord, RulesRepository } from '../../core/proof-rules';
@@ -164,5 +165,21 @@ export class InMemorySavedMethodRepository implements SavedMethodRepository {
   }
   async deletePending(userId: string) {
     this.pending.delete(userId);
+  }
+}
+
+export class InMemoryPactRepository implements PactRepository {
+  private readonly table = new Table<Pact>();
+  async get(goalId: string) {
+    return this.table.get(goalId);
+  }
+  async getByToken(token: string) {
+    return this.table.all().find((pact) => pact.token === token) ?? null;
+  }
+  async save(pact: Pact) {
+    this.table.set(pact.goalId, pact);
+  }
+  async listOpenPayouts() {
+    return this.table.all().filter((pact) => isPayoutOpen(pact.payout));
   }
 }

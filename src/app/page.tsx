@@ -175,7 +175,7 @@ export default async function HomePage() {
           </span>
           <div>
             <p className="value">{formatMoney(money.charity)}</p>
-            <p className="label-small muted">To charity</p>
+            <p className="label-small muted">Charged</p>
           </div>
         </div>
       </section>

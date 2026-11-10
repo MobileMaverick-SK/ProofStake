@@ -35,7 +35,8 @@ export function createFakePayPalServer() {
   let validToken = '';
   const vaultIds = new Set<string>();
   const setups = new Map<string, boolean>();
-  const options = { vaultingEnabled: true };
+  const options = { vaultingEnabled: true, payoutItemStatus: 'SUCCESS' };
+  const payouts = new Map<string, { receiver: string; value: string }>();
 
   const json = (status: number, body: unknown) =>
     new Response(body === null ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -132,6 +133,18 @@ export function createFakePayPalServer() {
     }
     if ((match = /^\/v2\/payments\/captures\/([^/]+)\/refund$/.exec(url.pathname)) && method === 'POST') {
       return remember(201, { id: `REFUND${++sequence}`, status: 'COMPLETED' });
+    }
+    if (method === 'POST' && url.pathname === '/v1/payments/payouts') {
+      const payout = body as { sender_batch_header?: { sender_batch_id?: string }; items?: { receiver?: string; amount?: { value?: string } }[] };
+      const item = payout.items?.[0];
+      if (!payout.sender_batch_header?.sender_batch_id || !item?.receiver || !item.amount?.value) return unprocessable('VALIDATION_ERROR');
+      const id = `PAYOUT${++sequence}`;
+      payouts.set(id, { receiver: item.receiver, value: item.amount.value });
+      return remember(201, { batch_header: { payout_batch_id: id, batch_status: 'PENDING' } });
+    }
+    if ((match = /^\/v1\/payments\/payouts\/([^/]+)$/.exec(url.pathname)) && method === 'GET') {
+      if (!payouts.has(match[1]!)) return json(404, { name: 'RESOURCE_NOT_FOUND' });
+      return json(200, { batch_header: { payout_batch_id: match[1], batch_status: 'SUCCESS' }, items: [{ transaction_status: options.payoutItemStatus }] });
     }
     if (method === 'POST' && url.pathname === '/v3/vault/setup-tokens') {
       const wallet = (body as { payment_source?: { paypal?: { experience_context?: { return_url?: string; cancel_url?: string } } } })

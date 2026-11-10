@@ -15,7 +15,7 @@ import {
 import { AdminGate, RandomSessionTokens, ScryptPasswordHasher } from './adapters/auth';
 import { createSqliteRepositories, openDatabase } from './adapters/db';
 import { InProcessEventBus } from './adapters/events/in-process-event-bus';
-import { PayPalClient, PayPalMethodVault, PayPalRefunds, PayPalStakeHolds } from './adapters/paypal';
+import { PayPalClient, PayPalMethodVault, PayPalPayouts, PayPalRefunds, PayPalStakeHolds } from './adapters/paypal';
 import { LocalDiskProofStore } from './adapters/storage/local-disk-proof-store';
 import { systemClock } from './adapters/system-clock';
 import {
@@ -27,6 +27,7 @@ import {
 } from './core/accounts';
 import { createAppealsModule, type Refunds, type ReviewRepository } from './core/appeals';
 import { createGoalsModule, type GoalRepository } from './core/goals';
+import { createPactsModule, type PactRepository, type Payouts } from './core/pacts';
 import {
   createProofIntakeModule,
   type CodeGenerator,
@@ -64,6 +65,9 @@ export interface Ports {
   stakeHolds: StakeHolds;
   methodVault: PaymentMethodVault;
   refunds: Refunds;
+  pactRepository: PactRepository;
+  payouts: Payouts;
+  appealWindowMs?: number;
   generateCode?: CodeGenerator;
   confidenceThreshold?: number;
 }
@@ -103,13 +107,21 @@ export function createApp(ports: Ports) {
     }),
     // Interface segregation: appeals receives Refunds and nothing else from the payment side.
     appeals: createAppealsModule({ reviews: ports.reviewRepository, refunds: ports.refunds, bus, clock }),
+    // Likewise, pacts receives Payouts and nothing else.
+    pacts: createPactsModule({
+      pacts: ports.pactRepository,
+      payouts: ports.payouts,
+      bus,
+      clock,
+      appealWindowMs: ports.appealWindowMs,
+    }),
   };
 }
 
 export type App = ReturnType<typeof createApp>;
 
 /** Bump when the wiring changes, so a running dev server rebuilds its cached app instead of using a stale one. */
-const APP_REVISION = 12;
+const APP_REVISION = 13;
 
 /** How often the scheduler looks for goals whose deadline has passed. */
 const DEADLINE_CHECK_MS = 30_000;
@@ -132,6 +144,7 @@ function buildRunningApp() {
     : null;
   const manualVerifier = new ManualVerdictVerifier();
   const threshold = Number(process.env.CONFIDENCE_THRESHOLD);
+  const appealWindowMinutes = Number(process.env.APPEAL_WINDOW_MINUTES);
 
   const app = createApp({
     ...createSqliteRepositories(openDatabase(join(dataDir, 'proofstake.db'))),
@@ -145,6 +158,8 @@ function buildRunningApp() {
     stakeHolds: new PayPalStakeHolds(paypal),
     methodVault: new PayPalMethodVault(paypal),
     refunds: new PayPalRefunds(paypal),
+    payouts: new PayPalPayouts(paypal),
+    appealWindowMs: appealWindowMinutes > 0 ? appealWindowMinutes * 60_000 : undefined,
     confidenceThreshold: threshold > 0 && threshold <= 1 ? threshold : undefined,
   });
 
@@ -153,6 +168,7 @@ function buildRunningApp() {
     try {
       await app.goals.tickDeadlines();
       await app.settlement.retryPendingSettlements();
+      await app.pacts.processPayouts();
     } catch (error) {
       console.error('[scheduler] deadline check failed', error);
     }

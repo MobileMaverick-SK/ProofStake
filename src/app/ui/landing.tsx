@@ -18,7 +18,7 @@ export function Landing() {
             <h1 className="display">Put money on your own deadline.</h1>
             <p className="body-large muted lede">
               Set a goal and a stake. PayPal holds the money. Prove you finished with a photo and you pay nothing.
-              Miss it and the stake goes to charity.
+              Miss it and the stake goes to charity, or to a friend you made a pact with.
             </p>
             <div className="row wrap">
               <Link href="/signup" className="button filled large">
@@ -111,11 +111,11 @@ export function Landing() {
             </li>
             <li>
               <span className="badge">
-                <Icon name="volunteer_activism" />
+                <Icon name="handshake" />
               </span>
               <div className="stack" style={{ gap: 4 }}>
-                <h3 className="title">Missed stakes go to charity</h3>
-                <p className="body-small muted">Never to other users, so nobody profits from you failing.</p>
+                <h3 className="title">Charity, or a pact with a friend</h3>
+                <p className="body-small muted">A missed stake goes to a charity pool, or to one person you choose. They agree to the pact up front and never judge your proof.</p>
               </div>
             </li>
           </ul>

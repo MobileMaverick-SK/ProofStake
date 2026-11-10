@@ -49,7 +49,7 @@ function moneyLine(goal: Goal): string {
   const captured = goal.capture?.amount.cents ?? 0;
   if (goal.state === 'REFUNDED') return `${formatMoney(goal.stake)} refunded`;
   if (captured === 0) return `Kept ${formatMoney(goal.stake)}`;
-  return `${formatMoney({ cents: captured, currency: 'USD' })} to charity`;
+  return `${formatMoney({ cents: captured, currency: 'USD' })} charged`;
 }
 
 export function GoalCard({ goal }: { goal: Goal }) {

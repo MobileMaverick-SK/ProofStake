@@ -63,8 +63,12 @@ export function createAppealsUseCases({ reviews, refunds, bus, clock }: AppealsD
       if (text.length < 5 || text.length > 1000) {
         throw new DomainError('VALIDATION', 'Explain the appeal in 5 to 1000 characters');
       }
-      if (!(await reviews.getCapture(goalId))) {
+      const capture = await reviews.getCapture(goalId);
+      if (!capture) {
         throw new DomainError('CONFLICT', 'Nothing was captured for this goal, so there is nothing to appeal');
+      }
+      if (capture.paidOut) {
+        throw new DomainError('CONFLICT', 'The time to appeal has passed: the money was already sent to your pact partner');
       }
       const existing = await reviews.listCases({ goalId });
       if (existing.some((c) => c.kind === 'APPEAL')) {
@@ -79,6 +83,7 @@ export function createAppealsUseCases({ reviews, refunds, bus, clock }: AppealsD
         appealReason: text,
       };
       await reviews.saveCase(appeal);
+      await bus.publish({ type: 'AppealFiled', goalId });
       return appeal;
     },
 
@@ -88,10 +93,12 @@ export function createAppealsUseCases({ reviews, refunds, bus, clock }: AppealsD
       if (!uphold) {
         const rejected: ReviewCase = { ...open, status: 'RESOLVED', resolution: { kind: 'APPEAL_REJECTED' } };
         await reviews.saveCase(rejected);
+        await bus.publish({ type: 'AppealRejected', goalId: open.goalId });
         return rejected;
       }
       const capture = await reviews.getCapture(open.goalId);
       if (!capture) throw new DomainError('CONFLICT', 'There is no capture to refund');
+      if (capture.paidOut) throw new DomainError('CONFLICT', 'This money was already sent to the pact partner and cannot be refunded');
       const { refundId } = await refunds.refund(capture.captureId, capture.amount);
       const upheld: ReviewCase = {
         ...open,

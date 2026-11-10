@@ -36,6 +36,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
   const app = getApp();
   const goal = await orNull(app.goals.getOwnedGoal(user.id, id));
   if (!goal) notFound();
+  const pact = await app.pacts.getForGoal(id);
   const [stake, slot, verdict] = await Promise.all([
     orNull(app.settlement.getStake(id)),
     orNull(app.proofIntake.getProofSlot(id)),
@@ -82,8 +83,14 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
           <dd>{formatMoney(stake.amount)}</dd>
           <dt>Released back to you</dt>
           <dd>{formatMoney(released)}</dd>
-          <dt>Charged, to the charity pool</dt>
+          <dt>{pact?.payout && pact.payout.status !== 'CANCELLED' ? `Charged, for ${pact.partnerName}` : 'Charged, to the charity pool'}</dt>
           <dd>{formatMoney(captured)}</dd>
+          {pact?.payout?.payoutId ? (
+            <>
+              <dt>Payout to {pact.partnerName}</dt>
+              <dd className="id">{pact.payout.payoutId}</dd>
+            </>
+          ) : null}
           {goal.refund ? (
             <>
               <dt>Refunded to you</dt>

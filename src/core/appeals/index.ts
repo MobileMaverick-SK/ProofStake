@@ -8,6 +8,10 @@ export function createAppealsModule(deps: AppealsDeps) {
   deps.bus.subscribe('StakeCaptured', (e) =>
     deps.reviews.saveCapture({ goalId: e.goalId, captureId: e.captureId, amount: e.amount }),
   );
+  deps.bus.subscribe('StakePaidOut', async (e) => {
+    const capture = await deps.reviews.getCapture(e.goalId);
+    if (capture) await deps.reviews.saveCapture({ ...capture, paidOut: true });
+  });
   return useCases;
 }
 export type AppealsModule = ReturnType<typeof createAppealsModule>;

@@ -21,6 +21,8 @@ export function NewGoalForm({
   const { state, pending, onSubmit } = useKeptForm(action);
   const [stake, setStake] = useState('20.00');
   const [deadline, setDeadline] = useState<Date | null>(null);
+  const [destination, setDestination] = useState<'charity' | 'partner'>('charity');
+  const [partnerName, setPartnerName] = useState('');
 
   const validStake = /^\d+(\.\d{1,2})?$/.test(stake) && Number(stake) >= 1 && Number(stake) <= 500;
   const amount = validStake ? `$${Number(stake).toFixed(2)}` : null;
@@ -93,13 +95,67 @@ export function NewGoalForm({
         {validStake ? null : <span className="hint">Enter an amount from $1 to $500, for example 20 or 20.50.</span>}
       </div>
 
+      <div className="field">
+        <span className="question" id="destination-label">
+          If you miss it, who gets the money?
+        </span>
+        <input type="hidden" name="destination" value={destination} />
+        <div className="choices" role="group" aria-labelledby="destination-label">
+          <button
+            type="button"
+            className={`quick-chip${destination === 'charity' ? ' selected' : ''}`}
+            aria-pressed={destination === 'charity'}
+            onClick={() => setDestination('charity')}
+          >
+            <Icon name="volunteer_activism" className="small" />
+            Charity pool
+          </button>
+          <button
+            type="button"
+            className={`quick-chip${destination === 'partner' ? ' selected' : ''}`}
+            aria-pressed={destination === 'partner'}
+            onClick={() => setDestination('partner')}
+          >
+            <Icon name="handshake" className="small" />
+            A friend or partner
+          </button>
+        </div>
+        {destination === 'partner' ? (
+          <div className="pair">
+            <div className="field">
+              <label htmlFor="partnerName">Their name</label>
+              <input
+                id="partnerName"
+                name="partnerName"
+                type="text"
+                required
+                maxLength={60}
+                autoComplete="off"
+                value={partnerName}
+                onChange={(event) => setPartnerName(event.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="partnerEmail">Their email</label>
+              <input id="partnerEmail" name="partnerEmail" type="email" required maxLength={200} autoComplete="off" />
+            </div>
+          </div>
+        ) : null}
+        <span className="hint">
+          {destination === 'partner'
+            ? 'You get a link to send them. They must accept the pact; until they do, a lost stake goes to the charity pool. They never judge your proof.'
+            : 'A lost stake goes to the charity pool, never to another user.'}
+        </span>
+      </div>
+
       <div className="summary-line" aria-live="polite">
         <Icon name="lock" />
         <p>
           {amount && due ? (
             <>
               PayPal holds <strong>{amount}</strong> until <strong>{due}</strong>. Meet the goal and you pay nothing.
-              Miss it and the {amount} goes to charity.
+              Miss it and the {amount} goes to{' '}
+              {destination === 'partner' ? partnerName.trim() || 'your pact partner' : 'charity'}.
             </>
           ) : (
             'Choose a deadline and a stake from $1 to $500.'

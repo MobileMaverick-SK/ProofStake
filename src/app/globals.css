@@ -1707,3 +1707,47 @@ details.disclosure[open] > summary {
 .summary-line strong {
   font-weight: 600;
 }
+
+/* Pacts */
+.pact-page {
+  max-width: 640px;
+  margin: 24px auto 0;
+  gap: 24px;
+}
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 520px) {
+  .pair {
+    grid-template-columns: 1fr;
+  }
+}
+.quick-chip .icon {
+  vertical-align: -4px;
+  margin-right: 6px;
+}
+.invite-link {
+  font: 400 0.8125rem/1.5 var(--font-mono, ui-monospace, monospace);
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-container);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.quote {
+  margin: 0;
+  padding: 4px 0 4px 14px;
+  border-left: 3px solid var(--primary);
+  font-size: 1.0625rem;
+  line-height: 1.5;
+}
+.terms {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  line-height: 1.5;
+}
