@@ -1,15 +1,23 @@
-import { newId, notFound, usd, type Clock, type EventBus } from '../shared';
-import { validateNewGoal, type Goal } from './goal';
-import type { GoalRepository } from './ports';
+import { DomainError, newId, notFound, usd, type Clock, type EventBus } from '../shared';
+import { MIN_STAKE_CENTS, validateNewGoal, type Goal } from './goal';
+import type { GoalDraft, GoalDrafter, GoalRepository, PastGoal } from './ports';
+
+const OUTCOME: Partial<Record<GoalState, PastGoal['outcome']>> = {
+  SETTLED_RELEASED: 'MET',
+  SETTLED_PARTIAL: 'PARTLY_MET',
+  SETTLED_FORFEITED: 'MISSED',
+};
 import { transition, type GoalState } from './state-machine';
 
 export interface GoalsDeps {
   goals: GoalRepository;
+  /** absent when no AI service is configured */
+  drafter?: GoalDrafter;
   bus: EventBus;
   clock: Clock;
 }
 
-export function createGoalsUseCases({ goals, bus, clock }: GoalsDeps) {
+export function createGoalsUseCases({ goals, drafter, bus, clock }: GoalsDeps) {
   async function load(goalId: string): Promise<Goal> {
     const goal = await goals.get(goalId);
     if (!goal) throw notFound('Goal', goalId);
@@ -47,6 +55,42 @@ export function createGoalsUseCases({ goals, bus, clock }: GoalsDeps) {
         stake: goal.stake,
       });
       return load(goal.id);
+    },
+
+    /**
+     * Asks the goal agent to turn the user's own words into a draft. Nothing is
+     * saved: the draft fills the form, and creating the goal validates it again.
+     */
+    async draftGoal(userId: string, request: string, timeZone: string): Promise<{ draft: GoalDraft; problems: string[] }> {
+      const text = request.trim();
+      if (text.length < 5 || text.length > 600) {
+        throw new DomainError('VALIDATION', 'Describe what you want to do in 5 to 600 characters');
+      }
+      if (!drafter) throw new DomainError('CONFLICT', 'The goal agent needs an AI key (AI_API_KEY) on the server');
+      const now = clock.now();
+      const check = (draft: { text: string; deadline: Date | null; stakeCents: number | null }): string[] => {
+        const problems: string[] = [];
+        if (!draft.deadline) problems.push('No deadline was given');
+        if (draft.stakeCents === null) problems.push('No stake was given');
+        const valid = validateNewGoal(
+          { text: draft.text, deadline: draft.deadline ?? new Date(now.getTime() + 60_000), stakeCents: draft.stakeCents ?? MIN_STAKE_CENTS },
+          now,
+        );
+        if (!valid.ok) problems.push(...valid.error.message.split('; '));
+        return problems;
+      };
+      const history = (await goals.listByUser(userId)).slice(0, 8).map((goal) => ({
+        text: goal.text,
+        stakeCents: goal.stake.cents,
+        outcome: OUTCOME[goal.state] ?? 'OPEN',
+      }));
+      const draft = await drafter.draft({ request: text, now, timeZone, history, check });
+      const tidy: GoalDraft = {
+        ...draft,
+        text: draft.text.trim().slice(0, 500),
+        provability: Math.min(5, Math.max(1, Math.round(draft.provability))),
+      };
+      return { draft: tidy, problems: check(tidy) };
     },
 
     getGoal: load,

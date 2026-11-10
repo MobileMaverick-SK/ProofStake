@@ -2,6 +2,7 @@
 
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import type { DraftState } from '@/app/lib/draft-state';
 import type { FormState } from '@/app/lib/form-state';
 import { messageFor } from '@/app/lib/http';
 import { publicOrigin } from '@/app/lib/origin';
@@ -39,6 +40,37 @@ export async function logoutAction(): Promise<void> {
   const token = await clearSessionCookie();
   if (token) await getApp().accounts.logout(token);
   redirect('/');
+}
+
+/**
+ * The goal agent turns the user's own words into a draft that fills the form.
+ * Nothing is saved here; creating the goal validates everything again.
+ */
+export async function draftGoalAction(_previous: DraftState, form: FormData): Promise<DraftState> {
+  const user = await requireUser();
+  try {
+    const { draft, problems } = await getApp().goals.draftGoal(
+      user.id,
+      String(form.get('request') ?? ''),
+      String(form.get('timeZone') ?? 'UTC'),
+    );
+    return {
+      draft: {
+        key: Date.now(),
+        text: draft.text,
+        deadlineIso: draft.deadline ? draft.deadline.toISOString() : null,
+        stake: draft.stakeCents === null ? null : (draft.stakeCents / 100).toFixed(2),
+        partner: draft.partner,
+        provability: draft.provability,
+        changes: draft.changes,
+        questions: draft.questions,
+        steps: draft.steps,
+        problems,
+      },
+    };
+  } catch (error) {
+    return { error: messageFor(error) };
+  }
 }
 
 export async function createGoalAction(_previous: FormState, form: FormData): Promise<FormState> {

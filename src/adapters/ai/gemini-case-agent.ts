@@ -3,7 +3,8 @@ import { RECOMMENDATIONS, type CaseAdvice, type CaseAdvisor, type CaseBrief } fr
 import { DomainError, toDecimalString } from '../../core/shared';
 import { logServerError } from '../server-log';
 import type { AgentTools } from './agent-tools';
-import { AiError, withOneRetry, type GeminiClient, type GeminiContent, type GeminiTurnPart } from './gemini-client';
+import { runAgent } from './agent-loop';
+import { AiError, withOneRetry, type GeminiClient, type GeminiTurnPart } from './gemini-client';
 import type { ReadProof } from './gemini-proof-verifier';
 
 /** The agent may look things up this many times before it has to answer. */
@@ -98,29 +99,18 @@ export class GeminiCaseAgent implements CaseAdvisor {
     } else {
       first.push({ text: 'No proof photo is available.' });
     }
-    const contents: GeminiContent[] = [{ role: 'user', parts: first }];
-    const declarations = this.tools?.list() ?? [];
-    const steps: CaseAdvice['steps'] = [];
-
     try {
-      for (let step = 0; step < MAX_STEPS && declarations.length > 0; step++) {
-        const turn = await withOneRetry(() => this.gemini.generateTurn({ system: SYSTEM, contents, tools: declarations }));
-        contents.push(turn);
-        const calls = turn.parts.filter((part) => part.functionCall);
-        if (calls.length === 0) break;
-        const answers: GeminiTurnPart[] = [];
-        for (const part of calls) {
-          const { name, args = {} } = part.functionCall!;
-          const result = await this.tools!.call(name, args);
-          steps.push({ tool: name, ok: result.ok, note: noteFor(name, args, result.ok) });
-          answers.push({ functionResponse: { name, response: { result: result.text } } });
-        }
-        contents.push({ role: 'user', parts: answers });
-      }
-
-      contents.push({ role: 'user', parts: [{ text: FINAL }] });
+      const { answer, steps: taken } = await runAgent({
+        gemini: this.gemini,
+        system: SYSTEM,
+        opening: first,
+        tools: this.tools,
+        maxSteps: MAX_STEPS,
+        finalQuestion: FINAL,
+      });
+      const steps = taken.map((step) => ({ tool: step.tool, ok: step.ok, note: noteFor(step.tool, step.args, step.ok) }));
       const advice = await withOneRetry(async () => {
-        const parsed = adviceSchema.safeParse(await this.gemini.generateJson({ system: SYSTEM, contents }));
+        const parsed = adviceSchema.safeParse(await answer());
         if (!parsed.success) {
           const where = parsed.error.issues.map((issue) => issue.path.join('.') || '(root)').join(', ');
           throw new AiError(`The case agent's answer had an unexpected shape at: ${where}`, true);

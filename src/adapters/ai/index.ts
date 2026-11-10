@@ -1,5 +1,6 @@
 export { simplifySchema, type AgentTools } from './agent-tools';
 export { GeminiCaseAgent } from './gemini-case-agent';
+export { GeminiGoalAgent } from './gemini-goal-agent';
 export { AiError, GeminiClient, type GeminiConfig } from './gemini-client';
 export { GeminiProofVerifier, INSTRUCTIONS_CHECK_ID, buildVerdict, matchCode, type ReadProof } from './gemini-proof-verifier';
 export { GeminiRuleWriter } from './gemini-rule-writer';

@@ -3,6 +3,7 @@ import { RandomSessionTokens, ScryptPasswordHasher } from '../auth';
 import { InProcessEventBus } from '../events/in-process-event-bus';
 import { FakeCaseAdvisor } from './fake-case-advisor';
 import { FakeClock } from './fake-clock';
+import { FakeGoalDrafter } from './fake-goal-drafter';
 import { FakePayouts } from './fake-payouts';
 import { FakeProofStore } from './fake-proof-store';
 import { FakeProofVerifier } from './fake-proof-verifier';
@@ -24,6 +25,7 @@ import {
 
 export * from './fake-case-advisor';
 export * from './fake-clock';
+export * from './fake-goal-drafter';
 export * from './fake-payouts';
 export * from './fake-proof-store';
 export * from './fake-proof-verifier';
@@ -60,6 +62,7 @@ export function createFakePorts() {
     pactRepository: new InMemoryPactRepository(),
     payouts: new FakePayouts(),
     caseAdvisor: new FakeCaseAdvisor(),
+    goalDrafter: new FakeGoalDrafter(),
   };
 }
 export type FakePorts = ReturnType<typeof createFakePorts>;

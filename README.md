@@ -50,7 +50,7 @@ git clone <this repository>
 cd ProofStake
 npm install
 cp .env.example .env      # then fill in the values below
-npm test                  # 226 tests: unit, contract, architecture, end-to-end
+npm test                  # 232 tests: unit, contract, architecture, end-to-end
 npm run seed              # optional: a demo account with two goals ready for a hold
 npm run dev               # http://localhost:3000
 ```
@@ -292,7 +292,7 @@ third upload, when the user accepts it, or at the deadline.
 ## Tests
 
 ```bash
-npm test          # 226 tests
+npm test          # 232 tests
 npm run typecheck
 ```
 

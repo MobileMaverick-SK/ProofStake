@@ -22,7 +22,14 @@ function toLocalInput(date: Date): string {
  * user's time zone. The server checks the 3-day limit again either way.
  * `onDeadline` reports the chosen moment so the form can show it back.
  */
-export function DeadlinePicker({ onDeadline }: { onDeadline?: (deadline: Date | null) => void }) {
+export function DeadlinePicker({
+  onDeadline,
+  exact: suggested,
+}: {
+  onDeadline?: (deadline: Date | null) => void;
+  /** A moment to switch to, for example one the goal agent worked out. A new `key` applies it again. */
+  exact?: { iso: string; key: number } | null;
+}) {
   // Controlled, so the choice survives anything that resets the form.
   const [choice, setChoice] = useState<string>(String(24 * 60));
   const custom = choice === 'custom';
@@ -35,6 +42,17 @@ export function DeadlinePicker({ onDeadline }: { onDeadline?: (deadline: Date | 
     if (!value) setValue(toLocalInput(new Date(now + 24 * 60 * 60_000)));
     setChoice('custom');
   }
+
+  useEffect(() => {
+    if (!suggested) return;
+    const moment = new Date(suggested.iso);
+    if (Number.isNaN(moment.getTime())) return;
+    const now = Date.now();
+    setLimits({ min: toLocalInput(new Date(now + 5 * 60_000)), max: toLocalInput(new Date(now + MAX_MS)) });
+    setValue(toLocalInput(moment));
+    setChoice('custom');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggested?.key]);
 
   const exact = custom && value && !Number.isNaN(new Date(value).getTime()) ? new Date(value) : null;
   const iso = exact ? exact.toISOString() : '';

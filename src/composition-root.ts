@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import {
   GeminiCaseAgent,
   GeminiClient,
+  GeminiGoalAgent,
   GeminiProofVerifier,
   GeminiRuleWriter,
   ManualVerdictVerifier,
@@ -34,7 +35,7 @@ import {
   type UserRepository,
 } from './core/accounts';
 import { createAppealsModule, type CaseAdvisor, type Refunds, type ReviewRepository } from './core/appeals';
-import { createGoalsModule, type GoalRepository } from './core/goals';
+import { createGoalsModule, type GoalDrafter, type GoalRepository } from './core/goals';
 import { createPactsModule, type PactRepository, type Payouts } from './core/pacts';
 import {
   createProofIntakeModule,
@@ -74,6 +75,7 @@ export interface Ports {
   methodVault: PaymentMethodVault;
   refunds: Refunds;
   caseAdvisor?: CaseAdvisor;
+  goalDrafter?: GoalDrafter;
   pactRepository: PactRepository;
   payouts: Payouts;
   appealWindowMs?: number;
@@ -91,7 +93,7 @@ export function createApp(ports: Ports) {
       tokens: ports.sessionTokens,
       clock,
     }),
-    goals: createGoalsModule({ goals: ports.goalRepository, bus, clock }),
+    goals: createGoalsModule({ goals: ports.goalRepository, drafter: ports.goalDrafter, bus, clock }),
     proofRules: createProofRulesModule({ rules: ports.rulesRepository, writer: ports.ruleWriter, bus }),
     proofIntake: createProofIntakeModule({
       proofs: ports.proofRepository,
@@ -136,7 +138,7 @@ export function createApp(ports: Ports) {
 export type App = ReturnType<typeof createApp>;
 
 /** Bump when the wiring changes, so a running dev server rebuilds its cached app instead of using a stale one. */
-const APP_REVISION = 14;
+const APP_REVISION = 15;
 
 /** How often the scheduler looks for goals whose deadline has passed. */
 const DEADLINE_CHECK_MS = 30_000;
@@ -173,6 +175,7 @@ function buildRunningApp() {
     stakeHolds: new PayPalStakeHolds(paypal),
     methodVault: new PayPalMethodVault(paypal),
     refunds: new PayPalRefunds(paypal),
+    goalDrafter: gemini ? new GeminiGoalAgent(gemini) : undefined,
     // The case agent gets PayPal's Agent Toolkit with lookups only. It cannot move money.
     caseAdvisor: gemini
       ? new GeminiCaseAgent(
