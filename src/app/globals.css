@@ -1772,3 +1772,38 @@ details.disclosure[open] > summary {
   gap: 8px;
   align-items: center;
 }
+
+/* Live updates indicator */
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 500 0.75rem/1 var(--font);
+  color: var(--on-surface-variant);
+}
+.live .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary);
+  animation: live-pulse 2s ease-in-out infinite;
+}
+.live.off .dot {
+  background: var(--outline);
+  animation: none;
+}
+@keyframes live-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live .dot {
+    animation: none;
+  }
+}
+@media print {
+  .live {
+    display: none;
+  }
+}

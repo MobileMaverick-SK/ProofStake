@@ -14,7 +14,9 @@ import { formatMoney } from '@/app/lib/format';
 import { publicOrigin } from '@/app/lib/origin';
 import { requireUser } from '@/app/lib/session';
 import { AppShell } from '@/app/ui/app-shell';
-import { AutoRefresh, RefreshAt } from '@/app/ui/auto-refresh';
+import { RefreshAt } from '@/app/ui/auto-refresh';
+import { LiveUpdates } from '@/app/ui/live-updates';
+import { goalPulse } from '@/app/lib/pulse';
 import { ConfirmForm } from '@/app/ui/confirm-form';
 import { CopyButton } from '@/app/ui/copy-button';
 import { CountedTextarea } from '@/app/ui/counted-textarea';
@@ -326,6 +328,7 @@ export default async function GoalPage({
   const goal = await orNull(app.goals.getOwnedGoal(user.id, id));
   if (!goal) notFound();
   const pact = await app.pacts.getForGoal(id);
+  const pulse = await goalPulse(id);
   const inviteUrl = pact ? `${publicOrigin(await headers())}/pact/${pact.token}` : '';
   const payoutDue = pact?.payout?.status === 'SCHEDULED' ? pact.payout.dueAt.toISOString() : null;
   const [rulesRecord, slot, stake, verdict, cases] = await Promise.all([
@@ -366,7 +369,10 @@ export default async function GoalPage({
       <section className="stack">
         <div className="row spread wrap">
           <StateChip goal={goal} />
-          <span className="label numeric">{formatMoney(goal.stake)} stake</span>
+          <span className="row tight">
+            <LiveUpdates url={`/api/goals/${goal.id}/pulse`} version={pulse.version} nextCheckMs={pulse.nextCheckMs} />
+            <span className="label numeric">{formatMoney(goal.stake)} stake</span>
+          </span>
         </div>
         <h2 className="headline">{goal.text}</h2>
         <p className="body-small muted row tight">
@@ -389,7 +395,6 @@ export default async function GoalPage({
         </div>
       ) : null}
 
-      {goal.state === 'PROOF_SUBMITTED' || Boolean(stake?.pendingAction) ? <AutoRefresh /> : null}
       {goal.state === 'ACTIVE' || goal.state === 'AWAITING_STAKE' || goal.state === 'RULES_PROPOSED' ? (
         <RefreshAt iso={deadline} delayMs={goal.state === 'ACTIVE' ? 35_000 : 1000} />
       ) : null}

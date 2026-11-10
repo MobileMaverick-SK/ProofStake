@@ -140,10 +140,12 @@ export function createApp(ports: Ports) {
 export type App = ReturnType<typeof createApp>;
 
 /** Bump when the wiring changes, so a running dev server rebuilds its cached app instead of using a stale one. */
-const APP_REVISION = 17;
+const APP_REVISION = 18;
 
 /** How often the scheduler looks for goals whose deadline has passed. */
 const DEADLINE_CHECK_MS = 30_000;
+/** The shortest pause between two checks, however many screens are asking. */
+const MIN_CHECK_GAP_MS = 4_000;
 
 const SYNC_RESULT: Record<string, string> = {
   UNKNOWN_HOLD: 'not a hold of this app',
@@ -219,13 +221,22 @@ function buildRunningApp() {
   });
 
   /** Announces passed deadlines, then retries any settlement whose PayPal call failed earlier. */
+  // Screens that are open ask for this every few seconds, so it never runs twice at once
+  // and at most once every few seconds.
+  let checking = false;
+  let lastCheck = 0;
   const checkDeadlines = async () => {
+    if (checking || Date.now() - lastCheck < MIN_CHECK_GAP_MS) return;
+    checking = true;
     try {
       await app.goals.tickDeadlines();
       await app.settlement.retryPendingSettlements();
       await app.pacts.processPayouts();
     } catch (error) {
       console.error('[scheduler] deadline check failed', error);
+    } finally {
+      lastCheck = Date.now();
+      checking = false;
     }
   };
   // PayPal webhooks: a verified event makes the owning module read the payment back from PayPal.

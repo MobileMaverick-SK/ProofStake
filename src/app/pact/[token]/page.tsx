@@ -4,6 +4,8 @@ import { formatMoney } from '@/app/lib/format';
 import { acceptPactAction, declinePactAction, nudgePactAction } from '@/app/pact/actions';
 import { CountedTextarea } from '@/app/ui/counted-textarea';
 import { RulesList } from '@/app/ui/findings';
+import { LiveUpdates } from '@/app/ui/live-updates';
+import { goalPulse } from '@/app/lib/pulse';
 import { PayoutLine } from '@/app/ui/pact-status';
 import { PublicFrame } from '@/app/ui/public-frame';
 import { SubmitButton } from '@/app/ui/submit-button';
@@ -46,14 +48,24 @@ function Status({ pact }: { pact: Pact }) {
           <p>The hold was released. Nothing was charged and nothing is paid to you.</p>
         </section>
       );
-    case 'LOST':
+    case 'LOST': {
+      // For the partner this is money arriving, so it is not styled as bad news.
+      const sent = pact.payout?.status === 'SENT';
       return (
-        <section className="hero error stack">
-          <Icon name="money_off" className="large" />
-          <h2 className="headline">{owner} missed the goal</h2>
-          {pact.payout ? <PayoutLine pact={pact} viewer="partner" /> : <p>You had not accepted the pact, so the money went to the charity pool.</p>}
+        <section className={`hero ${sent ? '' : 'tertiary '}stack`}>
+          <Icon name={sent ? 'payments' : 'schedule'} className="large" />
+          <h2 className="headline">
+            {sent && pact.payout ? `${formatMoney(pact.payout.amount)} was sent to you` : `${owner} missed the goal`}
+          </h2>
+          {sent ? <p>{owner} missed the goal.</p> : null}
+          {pact.payout ? (
+            <PayoutLine pact={pact} viewer="partner" />
+          ) : (
+            <p>You had not accepted the pact, so the money went to the charity pool.</p>
+          )}
         </section>
       );
+    }
     case 'REFUNDED':
       return (
         <section className="hero neutral stack">
@@ -84,6 +96,7 @@ export default async function PactPage({
     if (isDomainError(failure) && failure.code === 'NOT_FOUND') notFound();
     throw failure;
   }
+  const pulse = await goalPulse(pact.goalId);
   const settled = pact.outcome === 'KEPT' || pact.outcome === 'LOST' || pact.outcome === 'REFUNDED';
   const windowMinutes = Math.round(app.pacts.appealWindowMs / 60_000);
 
@@ -91,10 +104,17 @@ export default async function PactPage({
     <PublicFrame reviewerLink={false}>
       <main className="pact-page stack">
         <section className="stack">
-          <span className="chip">
-            <Icon name="handshake" className="small" />
-            Pact invite for {pact.partnerName}
-          </span>
+          <div className="row spread wrap">
+            <span className="chip">
+              <Icon name="handshake" className="small" />
+              Pact invite for {pact.partnerName}
+            </span>
+            <LiveUpdates
+              url={`/api/pact/${encodeURIComponent(token)}/pulse`}
+              version={pulse.version}
+              nextCheckMs={pulse.nextCheckMs}
+            />
+          </div>
           <h1 className="headline">{pact.ownerName} wants you to hold them to a goal</h1>
           <p className="muted">
             {pact.ownerName} put {formatMoney(pact.stake)} on finishing this by the deadline. If they miss it, the money
