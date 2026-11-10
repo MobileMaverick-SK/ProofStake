@@ -13,6 +13,7 @@ import type {
 } from '../../core/settlement';
 import type { Verdict } from '../../core/shared';
 import type { VerdictRepository } from '../../core/verification';
+import type { WebhookEventEntry, WebhookEventLog } from '../paypal/webhooks';
 import { decode, encode, type Db } from './database';
 
 type Row = { data: string };
@@ -144,6 +145,13 @@ export class SqliteStakeRepository implements StakeRepository {
   async listPending() {
     const rows = this.db.prepare('SELECT data FROM stakes WHERE pending = 1').all() as Row[];
     return rows.map((row) => decode<StakeRecord>(row.data));
+  }
+
+  async findByAuthorization(authorizationId: string) {
+    const row = this.db
+      .prepare(`SELECT data FROM stakes WHERE json_extract(data, '$.authorizationId') = ?`)
+      .get(authorizationId) as Row | undefined;
+    return row ? decode<StakeRecord>(row.data) : null;
   }
 }
 
@@ -303,6 +311,26 @@ export class SqlitePactRepository implements PactRepository {
   async listOpenPayouts() {
     const rows = this.db.prepare('SELECT data FROM pacts WHERE payout_open = 1').all() as Row[];
     return rows.map((row) => decode<Pact>(row.data));
+  }
+}
+
+/** PayPal webhook events we have received, kept so each is handled once and can be shown to a reviewer. */
+export class SqliteWebhookEventLog implements WebhookEventLog {
+  constructor(private readonly db: Db) {}
+
+  async has(eventId: string) {
+    return Boolean(this.db.prepare('SELECT 1 FROM webhook_events WHERE id = ?').get(eventId));
+  }
+
+  async record(entry: WebhookEventEntry) {
+    this.db
+      .prepare('INSERT OR REPLACE INTO webhook_events (id, received_at, data) VALUES (?, ?, ?)')
+      .run(entry.id, entry.receivedAt.toISOString(), encode(entry));
+  }
+
+  async recent(limit: number) {
+    const rows = this.db.prepare('SELECT data FROM webhook_events ORDER BY received_at DESC LIMIT ?').all(limit) as Row[];
+    return rows.map((row) => decode<WebhookEventEntry>(row.data));
   }
 }
 

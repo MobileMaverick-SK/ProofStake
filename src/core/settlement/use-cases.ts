@@ -232,6 +232,31 @@ export function createSettlementUseCases({
     /** The user no longer wants one-step holds. Only our reference is removed; holds already placed are unaffected. */
     forgetSavedMethod: (userId: string) => savedMethods.delete(userId),
 
+    /**
+     * The payment provider says something about this hold changed. We do not take
+     * its word for what: we read the hold back and act on what we read.
+     * If the hold ended there while we still thought it was in place (voided in
+     * the provider's dashboard, or expired), nothing can be charged any more, so
+     * the stake is recorded as released.
+     */
+    async syncHold(authorizationId: string): Promise<'UNKNOWN_HOLD' | 'BUSY' | 'UNCHANGED' | 'UPDATED' | 'RELEASED'> {
+      const stake = await stakes.findByAuthorization(authorizationId);
+      if (!stake) return 'UNKNOWN_HOLD';
+      // Our own settlement is in progress or waiting to be retried: it will read the status itself.
+      if (inFlight.has(stake.goalId) || stake.pendingAction) return 'BUSY';
+      const holdStatus = await holds.getHoldStatus(authorizationId);
+      const ended = holdStatus === 'VOIDED' || holdStatus === 'EXPIRED' || holdStatus === 'DENIED';
+      const noted: StakeRecord = { ...stake, holdStatus, providerNotifiedAt: clock.now() };
+      if (ended && (stake.status === 'HELD' || stake.status === 'IN_REVIEW')) {
+        const { deferredVerdict: _unused, ...rest } = noted;
+        await stakes.save({ ...rest, status: 'RELEASED', endedAtProvider: true, settledAt: clock.now() });
+        await bus.publish({ type: 'StakeReleased', goalId: stake.goalId });
+        return 'RELEASED';
+      }
+      await stakes.save(noted);
+      return holdStatus === stake.holdStatus ? 'UNCHANGED' : 'UPDATED';
+    },
+
     /** Tries once more, right now, to carry out a decided settlement. Throws if PayPal still refuses. */
     async retrySettlement(goalId: string): Promise<void> {
       const stake = await load(goalId);

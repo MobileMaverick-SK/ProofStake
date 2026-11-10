@@ -36,6 +36,11 @@ export class FakeStakeHolds implements StakeHolds, PaymentMethodVault {
     this.order(orderId).approved = true;
   }
 
+  /** Test helper: the hold ends at the provider without the app asking (voided in the dashboard). */
+  voidAtProvider(authorizationId: string): void {
+    this.authorization(authorizationId).status = 'VOIDED';
+  }
+
   capturedCents(authorizationId: string): number {
     return this.authorization(authorizationId).capturedCents;
   }

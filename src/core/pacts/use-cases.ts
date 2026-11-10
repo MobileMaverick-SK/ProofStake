@@ -133,6 +133,16 @@ export function createPactsUseCases({ pacts, payouts, bus, clock, appealWindowMs
       return nudged;
     },
 
+    /** The payment provider says a payout changed: read its status back now instead of waiting for the next poll. */
+    async refreshPayout(payoutId: string): Promise<'UNKNOWN_PAYOUT' | 'UNCHANGED' | 'UPDATED'> {
+      const pact = (await pacts.listOpenPayouts()).find((open) => open.payout?.payoutId === payoutId);
+      if (!pact?.payout) return 'UNKNOWN_PAYOUT';
+      const providerStatus = await payouts.getStatus(payoutId);
+      if (providerStatus === pact.payout.providerStatus) return 'UNCHANGED';
+      await pacts.save({ ...pact, payout: { ...pact.payout, providerStatus } });
+      return 'UPDATED';
+    },
+
     // ---- reactions to what other modules announce ----
 
     onRulesAccepted: (goalId: string, rules: ProofRules) => update(goalId, (pact) => ({ ...pact, rules })),

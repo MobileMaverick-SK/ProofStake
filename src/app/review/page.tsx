@@ -292,10 +292,12 @@ export default async function ReviewQueuePage({
   await requireReviewer();
   const { error, notice, show } = await searchParams;
   const showDecided = show === 'decided';
+  const showEvents = show === 'events';
   const app = getApp();
   const openCases = await app.appeals.listCases({ status: 'OPEN' });
   const resolved = (await app.appeals.listCases({ status: 'RESOLVED' })).reverse();
-  const open = showDecided ? [] : await Promise.all(openCases.map(loadCase));
+  const open = showDecided || showEvents ? [] : await Promise.all(openCases.map(loadCase));
+  const events = showEvents ? await app.webhookLog.recent(50) : [];
   const goalText = new Map<string, string>();
   if (showDecided) {
     for (const done of resolved.slice(0, 50)) {
@@ -344,11 +346,14 @@ export default async function ReviewQueuePage({
         </section>
 
         <nav className="filter-row" aria-label="Show">
-          <Link href="/review" className="filter-chip" aria-current={showDecided ? undefined : 'page'}>
+          <Link href="/review" className="filter-chip" aria-current={showDecided || showEvents ? undefined : 'page'}>
             Waiting <span className="count">{openCases.length}</span>
           </Link>
           <Link href="/review?show=decided" className="filter-chip" aria-current={showDecided ? 'page' : undefined}>
             Decided <span className="count">{resolved.length}</span>
+          </Link>
+          <Link href="/review?show=events" className="filter-chip" aria-current={showEvents ? 'page' : undefined}>
+            PayPal events
           </Link>
         </nav>
 
@@ -365,7 +370,41 @@ export default async function ReviewQueuePage({
           </div>
         ) : null}
 
-        {showDecided ? (
+        {showEvents ? (
+          events.length === 0 ? (
+            <div className="empty">
+              <Icon name="webhook" className="large" />
+              <h2 className="title-large">No PayPal events yet</h2>
+              <p>
+                {app.paypalWebhooks.configured
+                  ? 'Verified webhook events from PayPal are listed here as they arrive.'
+                  : 'Webhooks are off. Set PAYPAL_WEBHOOK_ID on the server to receive them.'}
+              </p>
+            </div>
+          ) : (
+            <ul className="goal-rows">
+              {events.map((event) => (
+                <li key={event.id}>
+                  <div className="goal-row">
+                    <span className="badge big">
+                      <Icon name="webhook" />
+                    </span>
+                    <span>
+                      <span className="title text">{event.type}</span>
+                      <span className="meta">
+                        <span className="body-small muted">
+                          {event.resourceId ? `${event.resourceId}, ` : ''}
+                          <LocalTime iso={new Date(event.receivedAt).toISOString()} />
+                        </span>
+                      </span>
+                    </span>
+                    <span className="end body-small">{event.result}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )
+        ) : showDecided ? (
           resolved.length === 0 ? (
             <div className="empty">
               <Icon name="history" className="large" />

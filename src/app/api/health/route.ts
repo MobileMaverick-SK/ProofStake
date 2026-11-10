@@ -10,6 +10,7 @@ export async function GET() {
     ok: true,
     paypal: app.paypalConfigured ? 'sandbox' : 'not configured',
     ai: app.aiConfigured ? 'configured' : 'not configured (verdicts are simulated)',
+    webhooks: app.paypalWebhooks.configured ? 'configured' : 'off (no PAYPAL_WEBHOOK_ID)',
     reviewQueue: app.adminGate.enabled ? 'enabled' : 'off (no ADMIN_PASSWORD)',
   });
 }

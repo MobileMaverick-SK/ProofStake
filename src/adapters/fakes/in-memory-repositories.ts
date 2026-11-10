@@ -91,6 +91,9 @@ export class InMemoryStakeRepository implements StakeRepository {
   async listPending() {
     return this.table.all().filter((stake) => stake.pendingAction !== undefined);
   }
+  async findByAuthorization(authorizationId: string) {
+    return this.table.all().find((stake) => stake.authorizationId === authorizationId) ?? null;
+  }
 }
 
 export class InMemoryReviewRepository implements ReviewRepository {

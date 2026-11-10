@@ -35,6 +35,7 @@ export function createSettlementModule(deps: SettlementDeps) {
     acceptResult: uc.acceptResult,
     retrySettlement: uc.retrySettlement,
     retryPendingSettlements: uc.retryPendingSettlements,
+    syncHold: uc.syncHold,
   };
 }
 export type SettlementModule = ReturnType<typeof createSettlementModule>;

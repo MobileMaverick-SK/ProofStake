@@ -134,6 +134,11 @@ export function createFakePayPalServer() {
     if ((match = /^\/v2\/payments\/captures\/([^/]+)\/refund$/.exec(url.pathname)) && method === 'POST') {
       return remember(201, { id: `REFUND${++sequence}`, status: 'COMPLETED' });
     }
+    if (method === 'POST' && url.pathname === '/v1/notifications/verify-webhook-signature') {
+      const check = body as { webhook_id?: string; transmission_sig?: string; webhook_event?: unknown };
+      const genuine = check.webhook_id === 'WH-TEST' && check.transmission_sig === 'genuine' && Boolean(check.webhook_event);
+      return json(200, { verification_status: genuine ? 'SUCCESS' : 'FAILURE' });
+    }
     if (method === 'POST' && url.pathname === '/v1/payments/payouts') {
       const payout = body as { sender_batch_header?: { sender_batch_id?: string }; items?: { receiver?: string; amount?: { value?: string } }[] };
       const item = payout.items?.[0];

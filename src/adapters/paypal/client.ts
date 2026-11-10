@@ -37,6 +37,8 @@ export class PayPalNotConfiguredError extends Error {
 
 interface RequestOptions {
   body?: unknown;
+  /** A body that is already JSON text and must be sent byte for byte. Used instead of `body`. */
+  rawBody?: string;
   /** Sent as PayPal-Request-Id so a retried write is not applied twice. */
   requestId?: string;
 }
@@ -81,7 +83,7 @@ export class PayPalClient {
     const response = await this.fetchFn(`${this.baseUrl}${path}`, {
       method,
       headers,
-      body: method === 'POST' ? JSON.stringify(options.body ?? {}) : undefined,
+      body: method === 'POST' ? (options.rawBody ?? JSON.stringify(options.body ?? {})) : undefined,
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
 

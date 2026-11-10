@@ -60,10 +60,15 @@ export interface StakeRecord {
   lastError?: { at: Date; message: string };
   /** last status read back from PayPal after a write */
   holdStatus?: HoldStatus;
+  /** the last time the payment provider told us, unasked, that something about this hold changed */
+  providerNotifiedAt?: Date;
+  /** the hold ended at the provider without us asking (voided in its dashboard, or expired) */
+  endedAtProvider?: boolean;
 }
 
 export interface StakeRepository {
   get(goalId: string): Promise<StakeRecord | null>;
+  findByAuthorization(authorizationId: string): Promise<StakeRecord | null>;
   save(record: StakeRecord): Promise<void>;
   /** Stakes whose settlement was decided but has not gone through at PayPal yet. */
   listPending(): Promise<StakeRecord[]>;

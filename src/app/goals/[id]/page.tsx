@@ -140,6 +140,14 @@ function Receipt({ goal, stake }: { goal: Goal; stake: StakeRecord }) {
             <dd>{stake.holdStatus.replace('_', ' ').toLowerCase()}</dd>
           </>
         ) : null}
+        {stake.providerNotifiedAt ? (
+          <>
+            <dt>Last PayPal webhook</dt>
+            <dd>
+              <LocalTime iso={new Date(stake.providerNotifiedAt).toISOString()} />
+            </dd>
+          </>
+        ) : null}
         {stake.orderId ? (
           <>
             <dt>Order ID</dt>
@@ -264,7 +272,11 @@ function Outcome({ goal, stake, pact }: { goal: Goal; stake: StakeRecord | null;
         <section className="hero stack">
           <Icon name="celebration" className="large" />
           <h2 className="headline">You kept your {formatMoney(goal.stake)}</h2>
-          <p>Goal met. The hold was released and nothing was charged.</p>
+          <p>
+            {stake?.endedAtProvider
+              ? 'The hold ended at PayPal before the goal was settled, so nothing was charged.'
+              : 'Goal met. The hold was released and nothing was charged.'}
+          </p>
         </section>
       );
     case 'SETTLED_PARTIAL':

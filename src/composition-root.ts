@@ -15,13 +15,14 @@ import {
   TemplateRuleWriter,
 } from './adapters/ai';
 import { AdminGate, RandomSessionTokens, ScryptPasswordHasher } from './adapters/auth';
-import { createSqliteRepositories, openDatabase } from './adapters/db';
+import { SqliteWebhookEventLog, createSqliteRepositories, openDatabase } from './adapters/db';
 import { InProcessEventBus } from './adapters/events/in-process-event-bus';
 import {
   PayPalClient,
   PayPalMethodVault,
   PayPalPayouts,
   PayPalReadOnlyTools,
+  PayPalWebhookReceiver,
   PayPalRefunds,
   PayPalStakeHolds,
 } from './adapters/paypal';
@@ -138,10 +139,20 @@ export function createApp(ports: Ports) {
 export type App = ReturnType<typeof createApp>;
 
 /** Bump when the wiring changes, so a running dev server rebuilds its cached app instead of using a stale one. */
-const APP_REVISION = 15;
+const APP_REVISION = 16;
 
 /** How often the scheduler looks for goals whose deadline has passed. */
 const DEADLINE_CHECK_MS = 30_000;
+
+const SYNC_RESULT: Record<string, string> = {
+  UNKNOWN_HOLD: 'not a hold of this app',
+  UNKNOWN_PAYOUT: 'not an open payout of this app',
+  BUSY: 'our own settlement is in progress',
+  UNCHANGED: 'checked with PayPal: already up to date',
+  UPDATED: 'checked with PayPal: status updated',
+  RELEASED: 'hold ended at PayPal: stake recorded as released',
+};
+const describeSync = (result: string) => SYNC_RESULT[result] ?? result;
 
 function buildRunningApp() {
   const dataDir = process.env.DATA_DIR || join(process.cwd(), 'data');
@@ -163,8 +174,9 @@ function buildRunningApp() {
   const threshold = Number(process.env.CONFIDENCE_THRESHOLD);
   const appealWindowMinutes = Number(process.env.APPEAL_WINDOW_MINUTES);
 
+  const database = openDatabase(join(dataDir, 'proofstake.db'));
   const app = createApp({
-    ...createSqliteRepositories(openDatabase(join(dataDir, 'proofstake.db'))),
+    ...createSqliteRepositories(database),
     passwordHasher: new ScryptPasswordHasher(),
     sessionTokens: new RandomSessionTokens(),
     bus: new InProcessEventBus(),
@@ -201,6 +213,13 @@ function buildRunningApp() {
       console.error('[scheduler] deadline check failed', error);
     }
   };
+  // PayPal webhooks: a verified event makes the owning module read the payment back from PayPal.
+  const webhookLog = new SqliteWebhookEventLog(database);
+  const paypalWebhooks = new PayPalWebhookReceiver(paypal, process.env.PAYPAL_WEBHOOK_ID ?? '', webhookLog, {
+    holdChanged: async (authorizationId) => describeSync(await app.settlement.syncHold(authorizationId)),
+    payoutChanged: async (payoutId) => describeSync(await app.pacts.refreshPayout(payoutId)),
+  });
+
   const scheduler = setInterval(checkDeadlines, DEADLINE_CHECK_MS);
   scheduler.unref();
 
@@ -209,6 +228,8 @@ function buildRunningApp() {
     proofStore,
     manualVerifier,
     paypalClientId,
+    paypalWebhooks,
+    webhookLog,
     paypalConfigured: paypal.configured,
     aiConfigured: gemini !== null,
     adminGate: new AdminGate(process.env.ADMIN_PASSWORD ?? ''),
