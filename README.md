@@ -23,6 +23,8 @@ solo builders) and miss the deadlines they set for themselves.
 Captured money goes to a "charity pool" (in this prototype, the sandbox business
 account). It never goes to other users, so nobody profits from you failing.
 
+**Live demo:** https://proofstake-production.up.railway.app (PayPal sandbox; sign in to the PayPal popup with a sandbox Personal account)
+
 > **Sandbox only.** Every payment in this project uses the PayPal sandbox. No
 > real money moves, and the PayPal client refuses to start with any
 > non-sandbox address.
