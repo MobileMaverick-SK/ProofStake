@@ -16,7 +16,7 @@ import {
   TemplateRuleWriter,
 } from './adapters/ai';
 import { AdminGate, RandomSessionTokens, ScryptPasswordHasher } from './adapters/auth';
-import { SqliteWebhookEventLog, createSqliteRepositories, openDatabase } from './adapters/db';
+import { SqliteApiCallLog, SqliteWebhookEventLog, createSqliteRepositories, openDatabase } from './adapters/db';
 import { InProcessEventBus } from './adapters/events/in-process-event-bus';
 import {
   PayPalClient,
@@ -140,7 +140,7 @@ export function createApp(ports: Ports) {
 export type App = ReturnType<typeof createApp>;
 
 /** Bump when the wiring changes, so a running dev server rebuilds its cached app instead of using a stale one. */
-const APP_REVISION = 18;
+const APP_REVISION = 19;
 
 /** How often the scheduler looks for goals whose deadline has passed. */
 const DEADLINE_CHECK_MS = 30_000;
@@ -160,7 +160,10 @@ const describeSync = (result: string) => SYNC_RESULT[result] ?? result;
 function buildRunningApp() {
   const dataDir = process.env.DATA_DIR || join(process.cwd(), 'data');
   const paypalClientId = process.env.PAYPAL_CLIENT_ID ?? '';
+  const database = openDatabase(join(dataDir, 'proofstake.db'));
+  const paypalCalls = new SqliteApiCallLog(database);
   const paypal = new PayPalClient({
+    onCall: (call) => void paypalCalls.record(call).catch(() => {}),
     clientId: paypalClientId,
     clientSecret: process.env.PAYPAL_CLIENT_SECRET ?? '',
     baseUrl: process.env.PAYPAL_BASE_URL || 'https://api-m.sandbox.paypal.com',
@@ -191,7 +194,6 @@ function buildRunningApp() {
       : firstVerifier;
   const appealWindowMinutes = Number(process.env.APPEAL_WINDOW_MINUTES);
 
-  const database = openDatabase(join(dataDir, 'proofstake.db'));
   const app = createApp({
     ...createSqliteRepositories(database),
     passwordHasher: new ScryptPasswordHasher(),
@@ -256,6 +258,7 @@ function buildRunningApp() {
     paypalClientId,
     paypalWebhooks,
     webhookLog,
+    paypalCalls,
     paypalConfigured: paypal.configured,
     aiConfigured: gemini !== null,
     aiModels: gemini ? { first: gemini.model, second: secondOpinion ? secondModel : null } : null,

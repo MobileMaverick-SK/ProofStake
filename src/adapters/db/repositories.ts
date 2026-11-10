@@ -13,6 +13,7 @@ import type {
 } from '../../core/settlement';
 import type { Verdict } from '../../core/shared';
 import type { VerdictRepository } from '../../core/verification';
+import type { ApiCall, ApiCallLog } from '../paypal/api-call-log';
 import type { WebhookEventEntry, WebhookEventLog } from '../paypal/webhooks';
 import { decode, encode, type Db } from './database';
 
@@ -311,6 +312,33 @@ export class SqlitePactRepository implements PactRepository {
   async listOpenPayouts() {
     const rows = this.db.prepare('SELECT data FROM pacts WHERE payout_open = 1').all() as Row[];
     return rows.map((row) => decode<Pact>(row.data));
+  }
+}
+
+/** Every PayPal API call, findable by any PayPal or goal id it was about. */
+export class SqliteApiCallLog implements ApiCallLog {
+  constructor(private readonly db: Db) {}
+
+  async record(call: ApiCall) {
+    const insert = this.db.transaction(() => {
+      const { lastInsertRowid } = this.db.prepare('INSERT INTO api_calls (at, data) VALUES (?, ?)').run(call.at.toISOString(), encode(call));
+      const link = this.db.prepare('INSERT INTO api_call_resources (call_seq, resource) VALUES (?, ?)');
+      for (const resource of new Set(call.resources)) link.run(lastInsertRowid, resource);
+    });
+    insert();
+  }
+
+  async forResources(ids: string[], limit = 100) {
+    const wanted = [...new Set(ids.filter(Boolean))];
+    if (wanted.length === 0) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT data FROM api_calls WHERE seq IN (
+           SELECT call_seq FROM api_call_resources WHERE resource IN (${wanted.map(() => '?').join(', ')})
+         ) ORDER BY seq DESC LIMIT ?`,
+      )
+      .all(...wanted, limit) as Row[];
+    return rows.map((row) => decode<ApiCall>(row.data)).reverse();
   }
 }
 

@@ -1,3 +1,4 @@
+export { InMemoryApiCallLog, resourcesOf, summaryOf, type ApiCall, type ApiCallLog } from './api-call-log';
 export { PayPalApiError, PayPalClient, PayPalNotConfiguredError, type PayPalConfig } from './client';
 export { PayPalRefunds } from './paypal-refunds';
 export { PayPalStakeHolds } from './paypal-stake-holds';

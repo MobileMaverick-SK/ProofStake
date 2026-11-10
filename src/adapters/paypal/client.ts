@@ -2,6 +2,8 @@
 const SANDBOX_HOSTS = new Set(['api-m.sandbox.paypal.com', 'api.sandbox.paypal.com']);
 const REQUEST_TIMEOUT_MS = 20_000;
 
+import { resourcesOf, summaryOf, type ApiCall } from './api-call-log';
+
 export interface PayPalConfig {
   clientId: string;
   clientSecret: string;
@@ -9,6 +11,8 @@ export interface PayPalConfig {
   /** Injected so tests can stand in for the network. The running app uses the real fetch. */
   fetchFn?: typeof fetch;
   now?: () => number;
+  /** Told about every API call (never the token request), so screens can show what PayPal was asked and said. */
+  onCall?: (call: ApiCall) => void;
 }
 
 /** A non-2xx answer from PayPal. Stays on the server: it is mapped to a DomainError before it leaves the adapter. */
@@ -80,10 +84,12 @@ export class PayPalClient {
     };
     if (options.requestId) headers['PayPal-Request-Id'] = options.requestId;
 
+    const body = method === 'POST' ? (options.rawBody ?? JSON.stringify(options.body ?? {})) : undefined;
+    const started = Date.now();
     const response = await this.fetchFn(`${this.baseUrl}${path}`, {
       method,
       headers,
-      body: method === 'POST' ? (options.rawBody ?? JSON.stringify(options.body ?? {})) : undefined,
+      body,
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
 
@@ -92,8 +98,37 @@ export class PayPalClient {
       return this.request(method, path, options, true);
     }
     const payload = await readJson(response);
+    this.report(method, path, options.requestId, body, response.status, Date.now() - started, payload);
     if (!response.ok) throw toApiError(response.status, payload);
     return payload;
+  }
+
+  private report(
+    method: 'GET' | 'POST',
+    path: string,
+    requestId: string | undefined,
+    body: string | undefined,
+    status: number,
+    ms: number,
+    payload: unknown,
+  ): void {
+    if (!this.config.onCall) return;
+    try {
+      const debugId = (payload as { debug_id?: unknown } | null)?.debug_id;
+      this.config.onCall({
+        at: new Date(),
+        method,
+        path: path.split('?')[0]!,
+        status,
+        ms,
+        requestId,
+        debugId: typeof debugId === 'string' ? debugId : undefined,
+        ...summaryOf(payload),
+        resources: resourcesOf(path, requestId, body, payload),
+      });
+    } catch {
+      // A record that cannot be made must never break a payment.
+    }
   }
 
   /** Client-credentials token, cached until shortly before it expires. */

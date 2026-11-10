@@ -23,6 +23,7 @@ import { CountedTextarea } from '@/app/ui/counted-textarea';
 import { StateChip } from '@/app/ui/goal-view';
 import { Icon } from '@/app/ui/symbol';
 import { Findings, RulesList } from '@/app/ui/findings';
+import { ApiActivity } from '@/app/ui/api-activity';
 import { PayoutLine } from '@/app/ui/pact-status';
 import { PayPalHoldButton } from '@/app/ui/paypal-hold-button';
 import { ProofUploadForm } from '@/app/ui/proof-upload-form';
@@ -337,6 +338,14 @@ export default async function GoalPage({
     orNull(app.settlement.getStake(id)),
     orNull(app.verification.getVerdict(id)),
     app.appeals.listCases({ goalId: id }),
+  ]);
+  const paypalCalls = await app.paypalCalls.forResources([
+    id,
+    stake?.orderId ?? '',
+    stake?.authorizationId ?? '',
+    stake?.captureId ?? '',
+    goal.refund?.refundId ?? '',
+    pact?.payout?.payoutId ?? '',
   ]);
   const savedMethod = goal.state === 'AWAITING_STAKE' ? await app.settlement.getSavedMethod(user.id) : null;
   const appeal = cases.find((reviewCase) => reviewCase.kind === 'APPEAL') ?? null;
@@ -717,6 +726,8 @@ export default async function GoalPage({
           {pact ? <PactCard pact={pact} inviteUrl={inviteUrl} /> : null}
 
           {stake && holdExists ? <Receipt goal={goal} stake={stake} /> : null}
+
+          <ApiActivity calls={paypalCalls} />
         </div>
       </div>
     </AppShell>

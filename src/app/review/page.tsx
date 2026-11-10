@@ -5,6 +5,7 @@ import { requireReviewer } from '@/app/lib/admin';
 import { askCaseAgentAction, decideAppealAction, resolveReviewAction } from '@/app/review/actions';
 import { ConfirmForm } from '@/app/ui/confirm-form';
 import { Findings, RulesList } from '@/app/ui/findings';
+import { ApiActivity } from '@/app/ui/api-activity';
 import { ReviewFrame } from '@/app/ui/review-frame';
 import { SubmitButton } from '@/app/ui/submit-button';
 import { Icon } from '@/app/ui/symbol';
@@ -38,7 +39,14 @@ async function loadCase(reviewCase: ReviewCase) {
     orNull(app.settlement.getStake(id)),
     getApp().appeals.getCapture(id),
   ]);
-  return { reviewCase, goal, rules: rules?.rules ?? null, slot, verdict: reviewCase.verdict ?? verdict, stake, capture };
+  const paypalCalls = await app.paypalCalls.forResources([
+    id,
+    stake?.orderId ?? '',
+    stake?.authorizationId ?? '',
+    capture?.captureId ?? '',
+    goal?.refund?.refundId ?? '',
+  ]);
+  return { reviewCase, goal, rules: rules?.rules ?? null, slot, verdict: reviewCase.verdict ?? verdict, stake, capture, paypalCalls };
 }
 
 const OPTIONS: { value: string; label: string; decision: ReviewDecision; partial?: boolean }[] = [
@@ -138,7 +146,7 @@ function AgentPanel({ reviewCase, available }: { reviewCase: ReviewCase; availab
 }
 
 function CaseCard({ data, agentAvailable }: { data: Awaited<ReturnType<typeof loadCase>>; agentAvailable: boolean }) {
-  const { reviewCase, goal, rules, slot, verdict, stake, capture } = data;
+  const { reviewCase, goal, rules, slot, verdict, stake, capture, paypalCalls } = data;
   const isAppeal = reviewCase.kind === 'APPEAL';
   return (
     <li className="review-case" id={`case-${reviewCase.id}`}>
@@ -211,6 +219,8 @@ function CaseCard({ data, agentAvailable }: { data: Awaited<ReturnType<typeof lo
         </div>
 
         <AgentPanel reviewCase={reviewCase} available={agentAvailable} />
+
+        <ApiActivity calls={paypalCalls} open={false} />
       </div>
 
       <footer>

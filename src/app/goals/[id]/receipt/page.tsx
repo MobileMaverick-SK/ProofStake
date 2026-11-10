@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { formatMoney } from '@/app/lib/format';
 import { requireUser } from '@/app/lib/session';
+import { ApiActivity } from '@/app/ui/api-activity';
 import { AppShell } from '@/app/ui/app-shell';
 import { PrintButton } from '@/app/ui/print-button';
 import { Icon } from '@/app/ui/symbol';
@@ -41,6 +42,14 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
     orNull(app.settlement.getStake(id)),
     orNull(app.proofIntake.getProofSlot(id)),
     orNull(app.verification.getVerdict(id)),
+  ]);
+  const paypalCalls = await app.paypalCalls.forResources([
+    id,
+    stake?.orderId ?? '',
+    stake?.authorizationId ?? '',
+    stake?.captureId ?? '',
+    goal.refund?.refundId ?? '',
+    pact?.payout?.payoutId ?? '',
   ]);
   const outcome = OUTCOME[goal.state];
   const backHref = `/goals/${goal.id}`;
@@ -211,7 +220,9 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
         <p className="body-small muted">PayPal sandbox. No real money moved.</p>
       </section>
 
-      <div className="row wrap">
+      <ApiActivity calls={paypalCalls} open={false} />
+
+      <div className="row wrap no-print">
         <PrintButton />
       </div>
     </AppShell>

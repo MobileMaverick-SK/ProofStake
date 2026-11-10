@@ -3,27 +3,34 @@
 Put money on your own deadline. Keep it by proving you did the work.
 
 ProofStake is a commitment app for people who work alone (students, freelancers,
-solo builders) and miss the deadlines they set for themselves.
+solo builders) and keep missing the deadlines they set for themselves. A to-do
+list costs nothing to ignore. ProofStake makes ignoring it cost something.
 
-1. You write a goal, a deadline and a stake: "Finish chapter 3 notes by
-   Wednesday 9 pm, stake $20".
+1. You write a goal, a deadline and a stake: "Write 8 pages of my thesis by
+   Friday 9 pm, $20". Or you just say it in one sentence and an AI agent fills
+   in the form.
 2. An AI model turns the goal into a short, strict list of proof rules. You read
    and accept them.
 3. PayPal places a **hold** on the stake. Nothing is charged.
-4. Before the deadline you upload a photo of the finished work. The photo must
-   include a one-time code the app shows you, written by hand.
-5. An AI vision model checks the photo against the rules.
-6. Plain code settles the money:
+4. Before the deadline you upload a photo of the finished work, with a one-time
+   code the app gives you written by hand in the same photo.
+5. An AI vision model checks the photo against the rules, and a second model
+   double-checks any verdict that would cost you money.
+6. Plain code, not the AI, settles the money:
    - goal met: the hold is voided and you pay nothing;
    - goal partly met: a proportional part is captured, the rest released;
    - goal missed, or no proof by the deadline: the full stake is captured.
-7. Verdicts the AI is unsure about go to a human review queue. You can appeal a
-   charge, and an upheld appeal is refunded.
+7. Anything the AI is unsure about goes to a human reviewer, who is helped by
+   an AI case agent. You can appeal a charge, and an upheld appeal is refunded.
 
-Captured money goes to a "charity pool" (in this prototype, the sandbox business
+A lost stake goes to a **charity pool** (in this prototype, the sandbox business
 account), or to one person you made a **pact** with: a friend or partner who
-agrees up front, receives a lost stake through PayPal Payouts, and never judges
+agrees up front, receives the money through PayPal Payouts, and never judges
 your proof.
+
+> **Sandbox only.** Every payment in this project uses the PayPal sandbox. No
+> real money moves, and the PayPal client refuses to start with any
+> non-sandbox address.
 
 ### Where PayPal and AI are used
 
@@ -41,120 +48,315 @@ your proof.
 | AI goal agent | Fills the new-goal form from one sentence, using tools |
 | AI case agent | Investigates a disputed case and advises the human reviewer |
 
-**Live demo:** https://proofstake-production.up.railway.app (PayPal sandbox; sign in to the PayPal popup with a sandbox Personal account)
-
-> **Sandbox only.** Every payment in this project uses the PayPal sandbox. No
-> real money moves, and the PayPal client refuses to start with any
-> non-sandbox address.
+The AI is Google Gemini (`gemini-3.6-flash`, with `gemini-3.5-flash` as the
+second opinion), called over its REST API.
 
 ## Contents
 
-- [Run it locally](#run-it-locally)
+- [Try the live demo](#try-the-live-demo)
+- [User guide](#user-guide)
+- [Reviewer guide](#reviewer-guide)
+- [Run it on your own machine](#run-it-on-your-own-machine)
 - [PayPal sandbox setup](#paypal-sandbox-setup)
-- [Demo walkthrough](#demo-walkthrough)
+- [Deploy](#deploy)
+- [Troubleshooting](#troubleshooting)
 - [Architecture](#architecture)
 - [How the AI is kept away from the money](#how-the-ai-is-kept-away-from-the-money)
 - [Settlement policy](#settlement-policy)
 - [Tests](#tests)
-- [Deploy](#deploy)
 - [Limits of this prototype](#limits-of-this-prototype)
 
-## Run it locally
+## Try the live demo
 
-Requires Node.js 20.9 or newer.
+**https://proofstake-production.up.railway.app**
+
+You need two kinds of login: one for ProofStake itself, and a PayPal sandbox
+account for the PayPal popup. A real PayPal login does not work in the popup.
+
+| What | Where it is used | Login |
+|---|---|---|
+| ProofStake account | The app | Create your own on the sign-up page (any email works, nothing is sent) |
+| PayPal sandbox buyer | The PayPal popup when placing a hold | `FILL IN: sandbox personal email` / `FILL IN: password` |
+| Second PayPal sandbox buyer | A pact partner's payout email | `FILL IN: second sandbox personal email` |
+| Reviewer | `/review/login` | Password: `FILL IN` |
+
+The fastest path through everything, about 10 minutes:
+
+1. Sign up, then press **New goal** and type in the box at the top:
+   *"Write the word hello on paper in 15 minutes, $5, my friend Ravi gets it
+   if I don't"*. Press **Draft it for me**, then fill in Ravi's email with the
+   second sandbox buyer and press **Continue**.
+2. Accept the rules. Copy the invite link from the **Pact** card, open it in a
+   private window, and accept the pact.
+3. Place the hold with the PayPal button, signing in as the first sandbox buyer.
+4. To see a miss: on paper, write the one-time code shown on screen and a word
+   other than "hello". Photograph it and upload it. The check fails. Press
+   **Take this result as final**: $5 is charged. (Write "hello" instead to see
+   the hold released.)
+5. Watch both windows: within about 5 minutes the money is sent to the partner,
+   and the partner's page shows it arriving. Neither page needs refreshing.
+6. Sign in at `/review/login`, open **PayPal events** to see the webhooks PayPal
+   sent, and on any open case press **Ask the case agent**.
+
+## User guide
+
+### Sign up and sign in
+
+- Open the app and press **Create your account**. Enter a name, any email
+  address and a password of at least 8 characters. The email is only a login
+  name: nothing is sent to it.
+- Next time, press **Sign in** with the same email and password. **Account →
+  Sign out** signs you out and returns you to the home page.
+- Accounts are separate: you only ever see your own goals.
+
+### Create a goal
+
+Press **New goal** (the + button). There are two ways to fill in the form.
+
+**Say it in a sentence.** Type what you want to do in the box at the top, for
+example *"Finish my thesis chapter by Friday 9pm, $20, and my wife Priya gets it
+if I don't"*, and press **Draft it for me**. The goal agent:
+
+1. checks the current time in your time zone, so "Friday 9pm" means your Friday;
+2. reads how your earlier goals went;
+3. rewrites the goal so one photo can prove it, and scores how provable it is (1 to 5);
+4. checks its draft against the app's rules (at most 3 days, $1 to $500).
+
+The form below is then filled in. The agent shows what it changed and what is
+still yours to decide (for example a missing stake or email). It never invents
+a stake: if you did not say an amount, it leaves the stake for you. Nothing is
+saved until you press **Continue**.
+
+**Or fill in the form yourself:**
+
+| Field | What to enter |
+|---|---|
+| What will you finish? | Something a photo can show, with a quantity: pages, items, problems |
+| When is it due? | In 15 minutes, 1 hour, 1 day, 3 days, or an exact time. At most 3 days from now |
+| How much will you stake? | $1 to $500 |
+| If you miss it, who gets the money? | **Charity pool**, or **A friend or partner** (their name and email) |
+
+Press **Continue**. The AI writes the proof rules, which takes a few seconds.
+
+### Accept the proof rules
+
+The goal screen shows the rules your photo will be judged against, for example
+"twelve handwritten pages are visible". Read them: they are the deal.
+
+- **Accept these rules** to go on.
+- **Write different rules** asks the AI for a new set.
+
+Once accepted, the rules cannot change.
+
+### Place the hold
+
+Press the PayPal button and sign in as a **sandbox** buyer. PayPal holds the
+stake on that account; nothing is charged yet. The **Money** card then shows
+PayPal's order ID and authorization ID.
+
+Tick **Save this PayPal account for my next goals** before paying, and later
+goals are held in one tap with **Place the $X hold**, without the PayPal popup.
+You can remove the saved account under **Account**.
+
+### Prove it
+
+The goal screen now shows a countdown, your **one-time code** (six letters and
+digits) and the upload box.
+
+1. Write the code by hand on paper.
+2. Take one photo showing the finished work and the code together.
+3. Choose the photo and press **Submit proof**. Checking takes a few seconds.
+
+What can happen next:
+
+| Result | What happens to the money |
+|---|---|
+| Approved | The hold is released at once. You pay nothing |
+| Not approved, uploads and time left | Nothing yet. Upload a better photo (3 uploads per goal), or press **Take this result as final** |
+| Not approved, last upload or deadline passed | Charged in full, or in proportion if the goal was partly met |
+| The AI is unsure, or the two models disagree | Nothing moves until a human reviewer decides |
+| No photo by the deadline | Charged in full, within about 30 seconds of the deadline |
+
+**PayPal API calls**, at the side of the goal screen, lists every call the
+server made to PayPal for this goal: what it was for, the real endpoint, the
+status code, PayPal's answer (for example `COMPLETED` or `VOIDED`), the amount,
+the time it took and the `PayPal-Request-Id` that makes a retry safe. It is
+recorded by the server as each call is made, never tokens or payer details, so
+you can see what happened without opening the PayPal dashboard. The receipt and
+each review case show the same list.
+
+**What the check found** lists every rule with a tick or a cross and the reason,
+whether the code was found, and whether the second model agreed.
+
+The goal screen updates by itself while something is happening: a small
+**Live** dot at the top shows it is watching. You never need to refresh.
+
+### After the result
+
+- **View receipt** on a settled goal shows what was held, released, charged and
+  refunded, with every PayPal ID, and can be printed.
+- **Appeal**: on a charged goal, explain what the check got wrong and press
+  **Send appeal**. A reviewer decides; if they uphold it, the charge is refunded
+  through PayPal. One appeal per goal.
+- **Goals** lists every goal, with filters for in progress and finished. The
+  home screen shows your open goals and totals.
+
+### Make a pact with a friend
+
+1. When creating the goal, choose **A friend or partner** and enter their name
+   and email. Their email must differ from yours.
+2. After accepting the rules, the goal screen has a **Pact** card with an invite
+   link. Press **Copy invite link** and send it to them however you like.
+3. They open the link (no account needed), read the goal, the rules and the
+   terms, enter the PayPal email they want to be paid at, tick **I agree** and
+   press **Accept pact**. They can also decline.
+4. Once they accept, they can send you **one short message** of encouragement,
+   which appears on your goal screen.
+5. If you miss the goal, the charged amount is sent to them through PayPal
+   Payouts **5 minutes after the charge**. That gap is your time to appeal: an
+   open appeal pauses the payout, and an upheld appeal refunds you and cancels
+   it. Once the money is sent, the charge can no longer be appealed.
+
+Both your goal screen and their invite page update live as this happens. The
+partner never sees your proof photo and has no say in the verdict. If they
+decline or never accept, a lost stake goes to the charity pool as usual.
+
+### Account
+
+**Account** shows your details, your saved PayPal account (with **Remove**),
+and **Sign out**.
+
+## Reviewer guide
+
+The reviewer is a separate role from the users: one person with the
+`ADMIN_PASSWORD`, who decides what the AI could not and who never receives
+money.
+
+1. Open `/review/login` (or **Reviewer sign-in** at the bottom of the
+   signed-out pages) and enter the password.
+2. The **Waiting** tab lists open cases. No money moves on a waiting case until
+   you decide it. Each case shows the goal, the proof photo, the code the photo
+   had to show, and what the automatic check found.
+
+**Unsure verdicts.** The AI was not confident, the two models disagreed, or the
+photo tried to instruct the checker. Choose **Goal met**, a partial amount (if
+the goal can be partly met), or **Not met**. Next to each choice is what it will
+do to the money, worked out by the same code that will carry it out. Press
+**Record decision**, then confirm.
+
+**Appeals.** The user's explanation is shown above the photo. **Uphold and
+refund** refunds the charge through PayPal; **Reject the appeal** lets it stand.
+If the goal has a pact, upholding cancels the partner's payout.
+
+**Ask the case agent.** On any open case, this button runs an AI agent that
+re-reads the photo and rules and looks the payment up at PayPal (order, refunds,
+disputes) through the PayPal Agent Toolkit, with lookup tools only. It then
+shows a summary, a suggested decision with its confidence, its reasons, and the
+lookups it made. It can take up to half a minute. It is advice: the decision
+buttons are yours.
+
+**Other tabs.** **Decided** lists the cases already resolved. **PayPal events**
+lists each verified webhook PayPal sent and what the app did about it.
+
+**Sign out** at the top of the review queue returns to the home page.
+
+## Run it on your own machine
+
+Requires Node.js 20.9 or newer (22 recommended) and git.
 
 ```bash
-git clone <this repository>
+git clone https://github.com/MobileMaverick-SK/ProofStake.git
 cd ProofStake
 npm install
 cp .env.example .env      # then fill in the values below
-npm test                  # 250 tests: unit, contract, architecture, end-to-end
+npm test                  # 256 tests: unit, contract, architecture, end-to-end
 npm run seed              # optional: a demo account with two goals ready for a hold
 npm run dev               # http://localhost:3000
 ```
 
 There is no database setup step. The SQLite file and the uploaded photos are
-created in `./data` on first use.
+created in `./data` on first use. `npm run seed` creates the account
+`demo@proofstake.test` with password `demo-password` (change them with
+`SEED_EMAIL` and `SEED_PASSWORD`); it is safe to run twice.
 
 ### Environment variables
 
 | Variable | Needed for | Notes |
 |---|---|---|
-| `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | Holds, captures, refunds | From a PayPal **sandbox** app. See below. |
-| `PAYPAL_BASE_URL` | | Leave as `https://api-m.sandbox.paypal.com`. Anything else is refused. |
-| `AI_API_KEY` | Rule writing, photo checks | A Google Gemini API key from aistudio.google.com. |
-| `AI_MODEL` | | Defaults to `gemini-3.6-flash`. Must accept images. |
-| `AI_SECOND_MODEL` | Second opinion | A different model. Defaults to `gemini-3.5-flash`; `off` disables it. |
-| `PAYPAL_WEBHOOK_ID` | Webhooks | Optional. See [PayPal sandbox setup](#paypal-sandbox-setup). |
-| `APPEAL_WINDOW_MINUTES` | Pacts | Minutes between a charge and the payout to the partner. Default `5`, short for demos. |
-| `CONFIDENCE_THRESHOLD` | | Verdicts below this go to review. Default `0.8`. |
-| `ADMIN_PASSWORD` | Review queue | If empty, the review queue is switched off. |
-| `DATA_DIR` | | Where the database and photos live. Default `./data`. |
-| `SEED_EMAIL`, `SEED_PASSWORD` | `npm run seed` | Default `demo@proofstake.test` / `demo-password`. |
+| `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | Holds, captures, refunds, payouts | From a PayPal **sandbox** app. See below |
+| `PAYPAL_BASE_URL` | | Leave as `https://api-m.sandbox.paypal.com`. Anything else is refused |
+| `PAYPAL_WEBHOOK_ID` | Webhooks | Optional. Needs a public URL, so not on localhost |
+| `AI_API_KEY` | Every AI feature | A Google Gemini API key from aistudio.google.com |
+| `AI_MODEL` | | Defaults to `gemini-3.6-flash`. Must accept images |
+| `AI_SECOND_MODEL` | Second opinion | A different model. Defaults to `gemini-3.5-flash`; `off` disables it |
+| `CONFIDENCE_THRESHOLD` | | Verdicts below this go to review. Default `0.8` |
+| `ADMIN_PASSWORD` | Review queue | If empty, the review queue is switched off |
+| `APPEAL_WINDOW_MINUTES` | Pacts | Minutes between a charge and the payout to the partner. Default `5` |
+| `DATA_DIR` | | Where the database and photos live. Default `./data` |
+| `SEED_EMAIL`, `SEED_PASSWORD` | `npm run seed` | Default `demo@proofstake.test` / `demo-password` |
 
 The app starts without any of these. Without PayPal keys the hold screen says
-so. Without an AI key, rules come from a fixed template and the upload form lets
-you pick the verdict to simulate, which is useful for exercising the money flow.
+so. Without an AI key, rules come from a fixed template, the agents are hidden,
+and the upload form lets you pick the verdict to simulate, which is useful for
+exercising the money flow. `/api/health` shows what is configured.
+
+Never commit `.env`: it is git-ignored, and only `.env.example` is in the
+repository.
 
 ## PayPal sandbox setup
 
-1. Sign in at developer.paypal.com with a PayPal account and switch the
-   dashboard to **Sandbox**.
-2. **Testing Tools > Sandbox Accounts**: you need one *Business* account (it
-   receives captured stakes) and one *Personal* account (the buyer). PayPal
-   creates a pair for you. Note the Personal account's email and password.
-3. **Apps & Credentials > Create App**. Copy the client ID and secret into
+1. Sign in at developer.paypal.com and switch the dashboard to **Sandbox**.
+2. **Testing Tools → Sandbox Accounts**: you need one **Business** account (it
+   receives captured stakes and pays out pacts) and at least one **Personal**
+   account (the buyer). Create a second Personal account to act as a pact
+   partner. Note their emails; open an account to see or change its password.
+3. **Apps & Credentials → Create App**. Copy the client ID and secret into
    `.env`.
-4. Optional, for one-tap holds: in the app's settings tick **Save payment
-   methods** (Vault), save, and restart the server.
+4. In the app's settings, under **Features**:
+   - tick **Save payment methods** (Vault), for one-tap holds;
+   - tick **Payouts**, for pacts.
+5. For webhooks (needs a public URL): under the app's **Sandbox Webhooks**, add
+   `https://<your-domain>/api/webhooks/paypal` with the Payment authorization,
+   Payment capture and Payouts batch and item events. Put the **Webhook ID**
+   PayPal shows into `PAYPAL_WEBHOOK_ID`.
 
-5. Optional, for pacts: tick **Payouts** in the app's features.
-6. Optional, for webhooks (needs a public URL, so not on localhost): under the
-   app's **Sandbox Webhooks**, add `https://<your-domain>/api/webhooks/paypal`
-   with the Payment authorization, Payment capture and Payouts events, and put
-   the Webhook ID PayPal shows into `PAYPAL_WEBHOOK_ID`.
+PayPal's webhook simulator sends unsigned mock events, which the app correctly
+rejects; use real goals to produce events. Every call the app makes appears in
+the dashboard under **Event Logs → API Calls**, and every webhook under
+**Event Logs → Webhook Events**.
 
-In the PayPal popup you sign in as the sandbox *Personal* account. A real PayPal
-login does not work there.
+## Deploy
 
-## Demo walkthrough
+The app is one Node process that needs a writable directory. The included
+`Dockerfile` builds it; mount a persistent volume at `/data`. The live demo runs
+on Railway:
 
-1. **Create an account** on the first screen, or sign in as the seeded demo user.
-2. **New goal**: for example "Write the numbers 1 to 8 on a single line", due in
-   15 minutes, $20 stake. The AI writes the proof rules; accept them.
-3. **Place the hold** with the PayPal button, approving as the sandbox buyer.
-   The Money card shows PayPal's order ID and authorization ID.
-4. **Upload proof**: write the on-screen code on paper next to the work and
-   photograph both.
-   - Everything there: the hold is voided. *You kept your $20.00.*
-   - Only half the numbers: not approved, and nothing is charged yet. Upload a
-     better photo (3 uploads per goal) or press **Take this result as final**
-     to be charged in proportion.
-   - No code, or text in the photo addressed to the AI: the result goes to a
-     human reviewer instead of moving money.
-5. **Receipt**: on a settled goal, **View receipt** shows what was held,
-   released, charged and refunded, with the PayPal IDs.
-6. **Appeal**: on a charged goal, send an appeal. Then open **Reviewer sign-in**
-   (footer of the signed-out pages), enter `ADMIN_PASSWORD`, and uphold it. The
-   charge is refunded through PayPal.
-7. **Say it in a sentence**: on the New goal screen, type "Write 8 pages of my
-   thesis by tomorrow 9pm, $20, my friend Ravi gets it if I don't" and press
-   **Draft it for me**. The goal agent fills in the form and shows the steps it
-   took.
-8. **Pact**: create a goal with **A friend or partner**. Copy the invite link
-   from the goal's Pact card, open it in a private window, and accept with the
-   email of a second sandbox Personal account. Miss the goal: after the appeal
-   window the charge is sent to that account, with a PayPal payout ID.
-9. **Case agent**: in the review queue, press **Ask the case agent** on a case.
-   It re-reads the photo, looks the payment up at PayPal, and suggests a
-   decision. The reviewer still decides.
-10. **Webhooks**: the review queue's **PayPal events** tab lists each verified
-    event PayPal sent and what the app did about it.
-11. **No proof**: create a goal, place the hold, and let the deadline pass. The
-   scheduler captures the full stake within about 30 seconds.
+1. Create a project from the GitHub repository. Railway builds the Dockerfile.
+2. Add a **volume** mounted at `/data`. Without it, every redeploy wipes the data.
+3. Under **Variables**, add the variables from the table above (not `DATA_DIR`;
+   the image sets it), plus `PORT=3000`.
+4. Under **Settings → Networking**, generate a domain with target port 3000.
+5. Open `https://<your-domain>/api/health` to check what is configured.
+6. Register the webhook (step 5 of the PayPal setup) and add `PAYPAL_WEBHOOK_ID`.
 
-Each step can be checked on PayPal's side in the developer dashboard under
-**Event Logs > API Calls**, or by signing in to sandbox.paypal.com as the buyer.
+No return addresses need registering with PayPal: the app works out its own
+public address from each request.
+
+## Troubleshooting
+
+| You see | Likely cause |
+|---|---|
+| "PayPal rejected the app credentials" | Wrong or empty `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET`, or live credentials instead of sandbox |
+| "PayPal does not allow this app to …" | A feature is not ticked on the PayPal app: **Save payment methods** for saved accounts, **Payouts** for pacts |
+| The PayPal popup rejects your login | Use a **sandbox** Personal account, not your real PayPal login |
+| "Finishing up with PayPal" stays on screen | PayPal did not answer. The app retries every 30 seconds; **Try PayPal again now** retries at once |
+| A payout says "will be sent after…" past that time | Usually Payouts is not enabled, or the business account balance is too low |
+| "The goal agent / case agent could not finish" | The AI service failed; the reason is in `data/server.log` |
+| `/api/health` says webhooks are off | `PAYPAL_WEBHOOK_ID` is not set, or the server was not restarted |
+| `npm test` crashes with a segmentation fault | An unsupported Node version for `better-sqlite3`; use Node 20.9+ or 22 |
+
+Server-side errors (PayPal debug IDs, AI failures) are written to
+`data/server.log`.
 
 ## Architecture
 
@@ -377,7 +579,7 @@ third upload, when the user accepts it, or at the deadline.
 ## Tests
 
 ```bash
-npm test          # 250 tests
+npm test          # 256 tests
 npm run typecheck
 ```
 
@@ -387,6 +589,8 @@ npm run typecheck
 - **PayPal adapter**: against a small fake of PayPal's HTTP API that enforces
   the same rules (approval before authorization, idempotency keys, one final
   capture, required return addresses for Vault).
+- **PayPal call log**: what is recorded for each call, that no credentials or
+  payer details are kept, and that a failing log never breaks a payment.
 - **AI adapter**: request shape, retries, malformed answers, code matching, and
   an injection attempt.
 - **Agents**: the tool loop, the step limit, and that the PayPal tools given to
@@ -396,22 +600,6 @@ npm run typecheck
 
 Fakes appear only in tests. The running app always talks to the real PayPal
 sandbox and the real AI service.
-
-## Deploy
-
-The app is one Node process that needs a writable directory. The included
-`Dockerfile` builds it; mount a persistent volume at `/data`.
-
-On Railway, for example:
-
-1. Create a project from this GitHub repository. Railway builds the Dockerfile.
-2. Add a **volume** mounted at `/data`.
-3. Add the variables from the table above (not `DATA_DIR`; the image sets it).
-4. Generate a public domain. `GET /api/health` shows which integrations are
-   configured.
-
-No callback addresses need registering with PayPal: the app works out its own
-public address from each request.
 
 ## Limits of this prototype
 

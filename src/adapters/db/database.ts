@@ -42,6 +42,9 @@ CREATE TABLE IF NOT EXISTS pacts (
   payout_open INTEGER NOT NULL DEFAULT 0,
   data TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS api_calls (seq INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS api_call_resources (call_seq INTEGER NOT NULL, resource TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS api_call_resources_by_id ON api_call_resources (resource);
 CREATE TABLE IF NOT EXISTS webhook_events (id TEXT PRIMARY KEY, received_at TEXT NOT NULL, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS review_cases (
   id TEXT PRIMARY KEY,
