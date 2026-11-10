@@ -1,6 +1,7 @@
 import type { DomainEvent } from '../../core/shared';
 import { RandomSessionTokens, ScryptPasswordHasher } from '../auth';
 import { InProcessEventBus } from '../events/in-process-event-bus';
+import { FakeCaseAdvisor } from './fake-case-advisor';
 import { FakeClock } from './fake-clock';
 import { FakePayouts } from './fake-payouts';
 import { FakeProofStore } from './fake-proof-store';
@@ -21,6 +22,7 @@ import {
   InMemoryVerdictRepository,
 } from './in-memory-repositories';
 
+export * from './fake-case-advisor';
 export * from './fake-clock';
 export * from './fake-payouts';
 export * from './fake-proof-store';
@@ -57,6 +59,7 @@ export function createFakePorts() {
     refunds: new FakeRefunds(),
     pactRepository: new InMemoryPactRepository(),
     payouts: new FakePayouts(),
+    caseAdvisor: new FakeCaseAdvisor(),
   };
 }
 export type FakePorts = ReturnType<typeof createFakePorts>;

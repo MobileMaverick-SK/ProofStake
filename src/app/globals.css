@@ -1751,3 +1751,24 @@ details.disclosure[open] > summary {
   gap: 8px;
   line-height: 1.5;
 }
+
+/* Case agent */
+.agent-panel {
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--surface-container);
+}
+.agent-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font: 400 0.8125rem/1.5 var(--font-mono);
+}
+.agent-steps li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}

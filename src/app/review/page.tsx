@@ -2,14 +2,15 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { formatMoney } from '@/app/lib/format';
 import { requireReviewer } from '@/app/lib/admin';
-import { decideAppealAction, resolveReviewAction } from '@/app/review/actions';
+import { askCaseAgentAction, decideAppealAction, resolveReviewAction } from '@/app/review/actions';
 import { ConfirmForm } from '@/app/ui/confirm-form';
 import { Findings, RulesList } from '@/app/ui/findings';
 import { ReviewFrame } from '@/app/ui/review-frame';
+import { SubmitButton } from '@/app/ui/submit-button';
 import { Icon } from '@/app/ui/symbol';
 import { LocalTime } from '@/app/ui/time';
 import { getApp } from '@/composition-root';
-import type { ReviewCase } from '@/core/appeals';
+import type { CaseAdvice, ReviewCase } from '@/core/appeals';
 import { decideSettlement } from '@/core/settlement';
 import { isDomainError, type Money, type ReviewDecision } from '@/core/shared';
 
@@ -55,11 +56,92 @@ function effect(decision: ReviewDecision, stake: Money): string {
   return 'releases the hold';
 }
 
-function CaseCard({ data }: { data: Awaited<ReturnType<typeof loadCase>> }) {
+const RECOMMENDATION: Record<CaseAdvice['recommendation'], { label: string; tone: string; icon: string }> = {
+  PASS: { label: 'Suggests: goal met', tone: 'good', icon: 'check_circle' },
+  PARTIAL: { label: 'Suggests: partly met', tone: 'warn', icon: 'incomplete_circle' },
+  FAIL: { label: 'Suggests: not met', tone: 'bad', icon: 'cancel' },
+  UPHOLD: { label: 'Suggests: uphold and refund', tone: 'good', icon: 'undo' },
+  REJECT: { label: 'Suggests: reject the appeal', tone: 'bad', icon: 'cancel' },
+  UNSURE: { label: 'No clear suggestion', tone: '', icon: 'help' },
+};
+
+/** The case agent's report, or the button that asks for one. Advice only: the decision buttons are below. */
+function AgentPanel({ reviewCase, available }: { reviewCase: ReviewCase; available: boolean }) {
+  const advice = reviewCase.advice;
+  const suggestion = advice ? RECOMMENDATION[advice.recommendation] : null;
+  return (
+    <section className="agent-panel stack" aria-label="Case agent">
+      <div className="row spread wrap">
+        <h3 className="title row">
+          <Icon name="smart_toy" />
+          Case agent
+        </h3>
+        {advice && suggestion ? (
+          <span className={`chip ${suggestion.tone}`.trim()}>
+            <Icon name={suggestion.icon} className="small" />
+            {suggestion.label} ({Math.round(advice.confidence * 100)}% sure)
+          </span>
+        ) : null}
+      </div>
+      {advice ? (
+        <>
+          <p>{advice.summary}</p>
+          {advice.reasons.length > 0 ? (
+            <ul className="terms body-small">
+              {advice.reasons.map((reason, index) => (
+                <li key={index}>{reason}</li>
+              ))}
+            </ul>
+          ) : null}
+          <div className="stack" style={{ gap: 4 }}>
+            <p className="label muted">What it looked up at PayPal</p>
+            {advice.steps.length > 0 ? (
+              <ul className="agent-steps">
+                {advice.steps.map((step, index) => (
+                  <li key={index}>
+                    <Icon name={step.ok ? 'check_circle' : 'error'} className="small" />
+                    <span>{step.note}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="body-small muted">Nothing: it worked from the case file alone.</p>
+            )}
+          </div>
+          <p className="body-small muted">
+            Advice only, from {advice.model}, <LocalTime iso={new Date(advice.at).toISOString()} />. The agent can look
+            payments up but cannot move money. You decide.
+          </p>
+        </>
+      ) : available ? (
+        <p className="body-small muted">
+          The agent re-reads the photo and rules and checks the payment at PayPal with read-only tools, then suggests a
+          decision. It cannot move money.
+        </p>
+      ) : (
+        <p className="body-small muted">The case agent needs an AI key (AI_API_KEY) on the server.</p>
+      )}
+      {available ? (
+        <form action={askCaseAgentAction.bind(null, reviewCase.id)}>
+          <SubmitButton
+            pendingLabel="Investigating…"
+            icon="smart_toy"
+            variant={advice ? 'text' : 'tonal'}
+            progressNote="The agent is reading the case and checking the payment at PayPal. This can take up to half a minute."
+          >
+            {advice ? 'Ask again' : 'Ask the case agent'}
+          </SubmitButton>
+        </form>
+      ) : null}
+    </section>
+  );
+}
+
+function CaseCard({ data, agentAvailable }: { data: Awaited<ReturnType<typeof loadCase>>; agentAvailable: boolean }) {
   const { reviewCase, goal, rules, slot, verdict, stake, capture } = data;
   const isAppeal = reviewCase.kind === 'APPEAL';
   return (
-    <li className="review-case">
+    <li className="review-case" id={`case-${reviewCase.id}`}>
       <header>
         <span className="row wrap">
           <span className={`chip ${isAppeal ? 'bad' : 'warn'}`}>
@@ -127,6 +209,8 @@ function CaseCard({ data }: { data: Awaited<ReturnType<typeof loadCase>> }) {
             )}
           </div>
         </div>
+
+        <AgentPanel reviewCase={reviewCase} available={agentAvailable} />
       </div>
 
       <footer>
@@ -328,7 +412,7 @@ export default async function ReviewQueuePage({
         ) : (
           <ul className="stack loose" style={{ listStyle: 'none', padding: 0 }}>
             {open.map((data) => (
-              <CaseCard key={data.reviewCase.id} data={data} />
+              <CaseCard key={data.reviewCase.id} data={data} agentAvailable={app.aiConfigured} />
             ))}
           </ul>
         )}

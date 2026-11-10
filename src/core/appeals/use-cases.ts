@@ -8,16 +8,23 @@ import {
   type ReviewDecision,
   type Verdict,
 } from '../shared';
-import type { Refunds, ReviewCase, ReviewRepository } from './ports';
+import type { CaseAdvisor, CaseBrief, Recommendation, Refunds, ReviewCase, ReviewRepository } from './ports';
+
+const ALLOWED: Record<ReviewCase['kind'], Recommendation[]> = {
+  LOW_CONFIDENCE: ['PASS', 'PARTIAL', 'FAIL', 'UNSURE'],
+  APPEAL: ['UPHOLD', 'REJECT', 'UNSURE'],
+};
 
 export interface AppealsDeps {
   reviews: ReviewRepository;
   refunds: Refunds;
+  /** absent when no AI service is configured */
+  advisor?: CaseAdvisor;
   bus: EventBus;
   clock: Clock;
 }
 
-export function createAppealsUseCases({ reviews, refunds, bus, clock }: AppealsDeps) {
+export function createAppealsUseCases({ reviews, refunds, advisor, bus, clock }: AppealsDeps) {
   async function loadOpen(caseId: string, kind: ReviewCase['kind']): Promise<ReviewCase> {
     const found = await reviews.getCase(caseId);
     if (!found || found.kind !== kind) throw notFound('Review case', caseId);
@@ -55,6 +62,33 @@ export function createAppealsUseCases({ reviews, refunds, bus, clock }: AppealsD
       await reviews.saveCase(resolved);
       await bus.publish({ type: 'ReviewResolved', goalId: open.goalId, decision: parsed.data });
       return resolved;
+    },
+
+    /**
+     * Asks the case agent to investigate an open case and stores what it suggests.
+     * This changes nothing but the note on the case: the reviewer still decides.
+     */
+    async requestAdvice(caseId: string, brief: CaseBrief): Promise<ReviewCase> {
+      const found = await reviews.getCase(caseId);
+      if (!found) throw notFound('Review case', caseId);
+      if (found.status !== 'OPEN') throw new DomainError('CONFLICT', 'This case was already resolved');
+      if (!advisor) throw new DomainError('CONFLICT', 'The case agent needs an AI key (AI_API_KEY) on the server');
+      const advice = await advisor.advise({ ...brief, kind: found.kind });
+      const advised: ReviewCase = {
+        ...found,
+        advice: {
+          ...advice,
+          // A suggestion that does not fit this kind of case is no suggestion.
+          recommendation: ALLOWED[found.kind].includes(advice.recommendation) ? advice.recommendation : 'UNSURE',
+          confidence: Math.min(1, Math.max(0, advice.confidence)),
+          at: clock.now(),
+        },
+      };
+      // The case may have been decided while the agent was working; do not reopen it.
+      const latest = await reviews.getCase(caseId);
+      if (latest?.status !== 'OPEN') return latest ?? advised;
+      await reviews.saveCase(advised);
+      return advised;
     },
 
     /** The user disputes a capture. One appeal per goal. */

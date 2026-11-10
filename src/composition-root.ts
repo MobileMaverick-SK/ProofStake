@@ -6,6 +6,7 @@
  */
 import { join } from 'node:path';
 import {
+  GeminiCaseAgent,
   GeminiClient,
   GeminiProofVerifier,
   GeminiRuleWriter,
@@ -15,7 +16,14 @@ import {
 import { AdminGate, RandomSessionTokens, ScryptPasswordHasher } from './adapters/auth';
 import { createSqliteRepositories, openDatabase } from './adapters/db';
 import { InProcessEventBus } from './adapters/events/in-process-event-bus';
-import { PayPalClient, PayPalMethodVault, PayPalPayouts, PayPalRefunds, PayPalStakeHolds } from './adapters/paypal';
+import {
+  PayPalClient,
+  PayPalMethodVault,
+  PayPalPayouts,
+  PayPalReadOnlyTools,
+  PayPalRefunds,
+  PayPalStakeHolds,
+} from './adapters/paypal';
 import { LocalDiskProofStore } from './adapters/storage/local-disk-proof-store';
 import { systemClock } from './adapters/system-clock';
 import {
@@ -25,7 +33,7 @@ import {
   type SessionTokens,
   type UserRepository,
 } from './core/accounts';
-import { createAppealsModule, type Refunds, type ReviewRepository } from './core/appeals';
+import { createAppealsModule, type CaseAdvisor, type Refunds, type ReviewRepository } from './core/appeals';
 import { createGoalsModule, type GoalRepository } from './core/goals';
 import { createPactsModule, type PactRepository, type Payouts } from './core/pacts';
 import {
@@ -65,6 +73,7 @@ export interface Ports {
   stakeHolds: StakeHolds;
   methodVault: PaymentMethodVault;
   refunds: Refunds;
+  caseAdvisor?: CaseAdvisor;
   pactRepository: PactRepository;
   payouts: Payouts;
   appealWindowMs?: number;
@@ -106,7 +115,13 @@ export function createApp(ports: Ports) {
       confidenceThreshold: ports.confidenceThreshold,
     }),
     // Interface segregation: appeals receives Refunds and nothing else from the payment side.
-    appeals: createAppealsModule({ reviews: ports.reviewRepository, refunds: ports.refunds, bus, clock }),
+    appeals: createAppealsModule({
+      reviews: ports.reviewRepository,
+      refunds: ports.refunds,
+      advisor: ports.caseAdvisor,
+      bus,
+      clock,
+    }),
     // Likewise, pacts receives Payouts and nothing else.
     pacts: createPactsModule({
       pacts: ports.pactRepository,
@@ -121,7 +136,7 @@ export function createApp(ports: Ports) {
 export type App = ReturnType<typeof createApp>;
 
 /** Bump when the wiring changes, so a running dev server rebuilds its cached app instead of using a stale one. */
-const APP_REVISION = 13;
+const APP_REVISION = 14;
 
 /** How often the scheduler looks for goals whose deadline has passed. */
 const DEADLINE_CHECK_MS = 30_000;
@@ -158,6 +173,16 @@ function buildRunningApp() {
     stakeHolds: new PayPalStakeHolds(paypal),
     methodVault: new PayPalMethodVault(paypal),
     refunds: new PayPalRefunds(paypal),
+    // The case agent gets PayPal's Agent Toolkit with lookups only. It cannot move money.
+    caseAdvisor: gemini
+      ? new GeminiCaseAgent(
+          gemini,
+          paypal.configured
+            ? new PayPalReadOnlyTools({ clientId: paypalClientId, clientSecret: process.env.PAYPAL_CLIENT_SECRET ?? '' })
+            : null,
+          (url) => proofStore.read(url),
+        )
+      : undefined,
     payouts: new PayPalPayouts(paypal),
     appealWindowMs: appealWindowMinutes > 0 ? appealWindowMinutes * 60_000 : undefined,
     confidenceThreshold: threshold > 0 && threshold <= 1 ? threshold : undefined,

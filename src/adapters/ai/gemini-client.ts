@@ -11,6 +11,26 @@ export interface GeminiConfig {
 
 export type GeminiPart = { text: string } | { inline_data: { mime_type: string; data: string } };
 
+/** A part as it appears in a conversation: what we send, plus what the model may send back. */
+export interface GeminiTurnPart {
+  text?: string;
+  thought?: boolean;
+  inline_data?: { mime_type: string; data: string };
+  functionCall?: { name: string; args?: Record<string, unknown> };
+  functionResponse?: { name: string; response: Record<string, unknown> };
+  [other: string]: unknown;
+}
+export interface GeminiContent {
+  role: 'user' | 'model';
+  parts: GeminiTurnPart[];
+}
+/** A tool the model may ask for. `parameters` is a plain JSON schema object. */
+export interface GeminiFunction {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+
 /** Anything that went wrong while asking the model. `retryable` is false when asking again cannot help. */
 export class AiError extends Error {
   constructor(
@@ -22,7 +42,7 @@ export class AiError extends Error {
   }
 }
 
-/** Minimal Gemini `generateContent` client that asks for JSON and returns the parsed value. */
+/** Minimal Gemini `generateContent` client: JSON answers, and conversations with tool calls. */
 export class GeminiClient {
   private readonly fetchFn: typeof fetch;
   private readonly baseUrl: string;
@@ -36,7 +56,40 @@ export class GeminiClient {
     return this.config.model;
   }
 
-  async generateJson(input: { system: string; parts: GeminiPart[] }): Promise<unknown> {
+  /** One JSON answer. Pass `parts` for a single question, or `contents` for a whole conversation so far. */
+  async generateJson(input: { system: string; parts?: GeminiPart[]; contents?: GeminiContent[] }): Promise<unknown> {
+    const content = await this.call({
+      system_instruction: { parts: [{ text: input.system }] },
+      contents: input.contents ?? [{ role: 'user', parts: input.parts ?? [] }],
+      generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
+    });
+    const text = content.parts
+      .filter((part) => typeof part.text === 'string' && !part.thought)
+      .map((part) => part.text)
+      .join('');
+    if (!text) throw new AiError('The AI service returned no text.', true);
+    try {
+      // Tolerate a fenced code block around the JSON, which models sometimes add.
+      return JSON.parse(text.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/, ''));
+    } catch {
+      throw new AiError('The AI service returned text that is not JSON.', true);
+    }
+  }
+
+  /**
+   * One turn of a conversation in which the model may ask for tools to be run.
+   * Returns the model's turn exactly as sent, so it can be appended to the conversation unchanged.
+   */
+  async generateTurn(input: { system: string; contents: GeminiContent[]; tools: GeminiFunction[] }): Promise<GeminiContent> {
+    return this.call({
+      system_instruction: { parts: [{ text: input.system }] },
+      contents: input.contents,
+      ...(input.tools.length > 0 ? { tools: [{ functionDeclarations: input.tools }] } : {}),
+      generationConfig: { temperature: 0.2 },
+    });
+  }
+
+  private async call(body: unknown): Promise<GeminiContent> {
     let response: Response;
     try {
       response = await this.fetchFn(
@@ -44,11 +97,7 @@ export class GeminiClient {
         {
           method: 'POST',
           headers: { 'x-goog-api-key': this.config.apiKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: input.system }] },
-            contents: [{ role: 'user', parts: input.parts }],
-            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
-          }),
+          body: JSON.stringify(body),
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         },
       );
@@ -68,20 +117,12 @@ export class GeminiClient {
       throw new AiError(`The AI service answered ${response.status}. ${detail}`, true);
     }
 
-    const payload = (await response.json().catch(() => null)) as {
-      candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[];
-    } | null;
-    const text = (payload?.candidates?.[0]?.content?.parts ?? [])
-      .filter((part) => typeof part.text === 'string' && !part.thought)
-      .map((part) => part.text)
-      .join('');
-    if (!text) throw new AiError('The AI service returned no text.', true);
-    try {
-      // Tolerate a fenced code block around the JSON, which models sometimes add.
-      return JSON.parse(text.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/, ''));
-    } catch {
-      throw new AiError('The AI service returned text that is not JSON.', true);
+    const payload = (await response.json().catch(() => null)) as { candidates?: { content?: Partial<GeminiContent> }[] } | null;
+    const content = payload?.candidates?.[0]?.content;
+    if (!content || !Array.isArray(content.parts) || content.parts.length === 0) {
+      throw new AiError('The AI service returned an empty answer.', true);
     }
+    return { role: 'model', parts: content.parts };
   }
 }
 

@@ -1,6 +1,16 @@
 import { createAppealsUseCases, type AppealsDeps } from './use-cases';
 
-export type { CaptureRecord, Refunds, ReviewCase, ReviewRepository } from './ports';
+export { RECOMMENDATIONS } from './ports';
+export type {
+  CaptureRecord,
+  CaseAdvice,
+  CaseAdvisor,
+  CaseBrief,
+  Recommendation,
+  Refunds,
+  ReviewCase,
+  ReviewRepository,
+} from './ports';
 
 export function createAppealsModule(deps: AppealsDeps) {
   const { openLowConfidenceCase, ...useCases } = createAppealsUseCases(deps);
