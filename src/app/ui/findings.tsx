@@ -45,8 +45,8 @@ export function Findings({ rules, verdict }: { rules: ProofRules; verdict: Verdi
       {verdict.checks
         .filter((check) => !rules.checks.some((rule) => rule.id === check.checkId))
         .map((check) => (
-          <div className="banner" key={check.checkId}>
-            <Icon name="gpp_maybe" />
+          <div className={`banner${check.passed ? ' info' : ''}`} key={check.checkId}>
+            <Icon name={check.passed ? 'verified' : 'gpp_maybe'} />
             <p className="body-small">{check.reason}</p>
           </div>
         ))}

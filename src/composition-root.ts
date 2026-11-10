@@ -11,6 +11,7 @@ import {
   GeminiGoalAgent,
   GeminiProofVerifier,
   GeminiRuleWriter,
+  SecondOpinionVerifier,
   ManualVerdictVerifier,
   TemplateRuleWriter,
 } from './adapters/ai';
@@ -139,7 +140,7 @@ export function createApp(ports: Ports) {
 export type App = ReturnType<typeof createApp>;
 
 /** Bump when the wiring changes, so a running dev server rebuilds its cached app instead of using a stale one. */
-const APP_REVISION = 16;
+const APP_REVISION = 17;
 
 /** How often the scheduler looks for goals whose deadline has passed. */
 const DEADLINE_CHECK_MS = 30_000;
@@ -172,6 +173,20 @@ function buildRunningApp() {
     : null;
   const manualVerifier = new ManualVerdictVerifier();
   const threshold = Number(process.env.CONFIDENCE_THRESHOLD);
+  const confidenceThreshold = threshold > 0 && threshold <= 1 ? threshold : undefined;
+  // A second, different model re-reads a photo before a verdict may cost the user money.
+  const secondModel = (process.env.AI_SECOND_MODEL || 'gemini-3.5-flash').trim();
+  const secondOpinion = Boolean(gemini) && secondModel.toLowerCase() !== 'off' && secondModel !== gemini?.model;
+  const readProof = (url: string) => proofStore.read(url);
+  const firstVerifier = gemini ? new GeminiProofVerifier(gemini, readProof) : null;
+  const proofVerifier =
+    firstVerifier && secondOpinion
+      ? new SecondOpinionVerifier(
+          firstVerifier,
+          new GeminiProofVerifier(new GeminiClient({ apiKey: aiApiKey, model: secondModel }), readProof),
+          confidenceThreshold,
+        )
+      : firstVerifier;
   const appealWindowMinutes = Number(process.env.APPEAL_WINDOW_MINUTES);
 
   const database = openDatabase(join(dataDir, 'proofstake.db'));
@@ -182,7 +197,7 @@ function buildRunningApp() {
     bus: new InProcessEventBus(),
     clock: systemClock,
     ruleWriter: gemini ? new GeminiRuleWriter(gemini) : new TemplateRuleWriter(),
-    proofVerifier: gemini ? new GeminiProofVerifier(gemini, (url) => proofStore.read(url)) : manualVerifier,
+    proofVerifier: proofVerifier ?? manualVerifier,
     proofStore,
     stakeHolds: new PayPalStakeHolds(paypal),
     methodVault: new PayPalMethodVault(paypal),
@@ -200,7 +215,7 @@ function buildRunningApp() {
       : undefined,
     payouts: new PayPalPayouts(paypal),
     appealWindowMs: appealWindowMinutes > 0 ? appealWindowMinutes * 60_000 : undefined,
-    confidenceThreshold: threshold > 0 && threshold <= 1 ? threshold : undefined,
+    confidenceThreshold,
   });
 
   /** Announces passed deadlines, then retries any settlement whose PayPal call failed earlier. */
@@ -232,8 +247,9 @@ function buildRunningApp() {
     webhookLog,
     paypalConfigured: paypal.configured,
     aiConfigured: gemini !== null,
+    aiModels: gemini ? { first: gemini.model, second: secondOpinion ? secondModel : null } : null,
     adminGate: new AdminGate(process.env.ADMIN_PASSWORD ?? ''),
-    confidenceThreshold: threshold > 0 && threshold <= 1 ? threshold : undefined,
+    confidenceThreshold,
     checkDeadlines,
     revision: APP_REVISION,
     stop: () => clearInterval(scheduler),

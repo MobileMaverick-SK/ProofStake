@@ -9,7 +9,9 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     paypal: app.paypalConfigured ? 'sandbox' : 'not configured',
-    ai: app.aiConfigured ? 'configured' : 'not configured (verdicts are simulated)',
+    ai: app.aiModels
+      ? `${app.aiModels.first}${app.aiModels.second ? `, second opinion from ${app.aiModels.second}` : ', no second opinion'}`
+      : 'not configured (verdicts are simulated)',
     webhooks: app.paypalWebhooks.configured ? 'configured' : 'off (no PAYPAL_WEBHOOK_ID)',
     reviewQueue: app.adminGate.enabled ? 'enabled' : 'off (no ADMIN_PASSWORD)',
   });

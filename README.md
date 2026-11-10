@@ -21,7 +21,25 @@ solo builders) and miss the deadlines they set for themselves.
    charge, and an upheld appeal is refunded.
 
 Captured money goes to a "charity pool" (in this prototype, the sandbox business
-account). It never goes to other users, so nobody profits from you failing.
+account), or to one person you made a **pact** with: a friend or partner who
+agrees up front, receives a lost stake through PayPal Payouts, and never judges
+your proof.
+
+### Where PayPal and AI are used
+
+| | What it does here |
+|---|---|
+| PayPal Orders v2 + JS SDK | Places the hold (intent `AUTHORIZE`) |
+| PayPal Payments v2 | Voids the hold, captures part or all of it, refunds an upheld appeal |
+| PayPal Vault (payment method tokens) | One-tap holds on a saved PayPal account |
+| PayPal Payouts | Sends a lost stake to the pact partner after the appeal window |
+| PayPal Webhooks | Verified events make the app re-read the payment from PayPal |
+| PayPal Agent Toolkit | Gives the reviewer's case agent read-only PayPal lookups |
+| AI rule writer | Turns the goal into strict proof rules |
+| AI vision check | Reads the proof photo against the rules |
+| AI second opinion | A different model re-reads the photo before a verdict may cost money |
+| AI goal agent | Fills the new-goal form from one sentence, using tools |
+| AI case agent | Investigates a disputed case and advises the human reviewer |
 
 **Live demo:** https://proofstake-production.up.railway.app (PayPal sandbox; sign in to the PayPal popup with a sandbox Personal account)
 
@@ -50,7 +68,7 @@ git clone <this repository>
 cd ProofStake
 npm install
 cp .env.example .env      # then fill in the values below
-npm test                  # 242 tests: unit, contract, architecture, end-to-end
+npm test                  # 250 tests: unit, contract, architecture, end-to-end
 npm run seed              # optional: a demo account with two goals ready for a hold
 npm run dev               # http://localhost:3000
 ```
@@ -66,6 +84,9 @@ created in `./data` on first use.
 | `PAYPAL_BASE_URL` | | Leave as `https://api-m.sandbox.paypal.com`. Anything else is refused. |
 | `AI_API_KEY` | Rule writing, photo checks | A Google Gemini API key from aistudio.google.com. |
 | `AI_MODEL` | | Defaults to `gemini-3.6-flash`. Must accept images. |
+| `AI_SECOND_MODEL` | Second opinion | A different model. Defaults to `gemini-3.5-flash`; `off` disables it. |
+| `PAYPAL_WEBHOOK_ID` | Webhooks | Optional. See [PayPal sandbox setup](#paypal-sandbox-setup). |
+| `APPEAL_WINDOW_MINUTES` | Pacts | Minutes between a charge and the payout to the partner. Default `5`, short for demos. |
 | `CONFIDENCE_THRESHOLD` | | Verdicts below this go to review. Default `0.8`. |
 | `ADMIN_PASSWORD` | Review queue | If empty, the review queue is switched off. |
 | `DATA_DIR` | | Where the database and photos live. Default `./data`. |
@@ -86,6 +107,12 @@ you pick the verdict to simulate, which is useful for exercising the money flow.
    `.env`.
 4. Optional, for one-tap holds: in the app's settings tick **Save payment
    methods** (Vault), save, and restart the server.
+
+5. Optional, for pacts: tick **Payouts** in the app's features.
+6. Optional, for webhooks (needs a public URL, so not on localhost): under the
+   app's **Sandbox Webhooks**, add `https://<your-domain>/api/webhooks/paypal`
+   with the Payment authorization, Payment capture and Payouts events, and put
+   the Webhook ID PayPal shows into `PAYPAL_WEBHOOK_ID`.
 
 In the PayPal popup you sign in as the sandbox *Personal* account. A real PayPal
 login does not work there.
@@ -110,7 +137,20 @@ login does not work there.
 6. **Appeal**: on a charged goal, send an appeal. Then open **Reviewer sign-in**
    (footer of the signed-out pages), enter `ADMIN_PASSWORD`, and uphold it. The
    charge is refunded through PayPal.
-7. **No proof**: create a goal, place the hold, and let the deadline pass. The
+7. **Say it in a sentence**: on the New goal screen, type "Write 8 pages of my
+   thesis by tomorrow 9pm, $20, my friend Ravi gets it if I don't" and press
+   **Draft it for me**. The goal agent fills in the form and shows the steps it
+   took.
+8. **Pact**: create a goal with **A friend or partner**. Copy the invite link
+   from the goal's Pact card, open it in a private window, and accept with the
+   email of a second sandbox Personal account. Miss the goal: after the appeal
+   window the charge is sent to that account, with a PayPal payout ID.
+9. **Case agent**: in the review queue, press **Ask the case agent** on a case.
+   It re-reads the photo, looks the payment up at PayPal, and suggests a
+   decision. The reviewer still decides.
+10. **Webhooks**: the review queue's **PayPal events** tab lists each verified
+    event PayPal sent and what the app did about it.
+11. **No proof**: create a goal, place the hold, and let the deadline pass. The
    scheduler captures the full stake within about 30 seconds.
 
 Each step can be checked on PayPal's side in the developer dashboard under
@@ -136,6 +176,7 @@ flowchart LR
     verification
     settlement
     appeals
+    pacts
     bus(("EventBus"))
     goals <--> bus
     rules <--> bus
@@ -143,11 +184,12 @@ flowchart LR
     verification <--> bus
     settlement <--> bus
     appeals <--> bus
+    pacts <--> bus
   end
 
   subgraph adapters["src/adapters"]
-    paypal["paypal/<br/>StakeHolds, Refunds, PaymentMethodVault"]
-    ai["ai/<br/>RuleWriter, ProofVerifier"]
+    paypal["paypal/<br/>StakeHolds, Refunds, Vault, Payouts,<br/>webhooks, read-only agent tools"]
+    ai["ai/<br/>RuleWriter, ProofVerifier (+ second opinion),<br/>goal agent, case agent"]
     db["db/<br/>SQLite repositories"]
     storage["storage/<br/>ProofStore"]
   end
@@ -157,6 +199,10 @@ flowchart LR
   verification -. ProofVerifier .-> ai
   settlement -. StakeHolds .-> paypal
   appeals -. Refunds .-> paypal
+  appeals -. CaseAdvisor .-> ai
+  goals -. GoalDrafter .-> ai
+  pacts -. Payouts .-> paypal
+  ai -. "agent tools (lookups only)" .-> paypal
   core -. repositories .-> db
   intake -. ProofStore .-> storage
   paypal --> PP[("PayPal sandbox")]
@@ -177,11 +223,14 @@ src/
     proof-intake/    one-time code, uploads (up to 3), proof record
     verification/    verdict from proof + rules
     settlement/      pure policy: verdict -> money action, then carries it out through a port
-    appeals/         review queue, appeals, refunds
+    appeals/         review queue, appeals, refunds, the case agent's advice
+    pacts/           partner invite, agreement, payout after the appeal window
     shared/          Money, Result, ids, domain events, EventBus and Clock ports
   adapters/
-    paypal/          Orders v2, Payments v2, Payment Method Tokens v3, against the sandbox
-    ai/              Gemini rule writer and photo verifier (plus placeholders for running without a key)
+    paypal/          Orders v2, Payments v2, Payment Method Tokens v3, Payouts, webhooks,
+                     and the PayPal Agent Toolkit limited to lookups; all against the sandbox
+    ai/              Gemini rule writer, photo verifier with second opinion, goal agent, case agent
+                     (plus placeholders for running without a key)
     db/              SQLite repositories
     storage/         local-disk photo store
     auth/            password hashing, session tokens, reviewer gate
@@ -207,8 +256,10 @@ scripts/seed.ts      the seed script
 | DeadlinePassed | goals (scheduler) | settlement, proof-intake |
 | ReviewRequested | settlement | appeals (review queue), goals |
 | ReviewResolved | appeals | settlement |
-| StakeReleased / StakeCaptured | settlement | goals (final state), appeals, proof-intake |
-| AppealUpheld | appeals | goals (refunded) |
+| StakeReleased / StakeCaptured | settlement | goals (final state), appeals, proof-intake, pacts |
+| AppealFiled / AppealRejected | appeals | pacts (pause or resume the payout) |
+| AppealUpheld | appeals | goals (refunded), pacts (cancel the payout) |
+| StakePaidOut | pacts | appeals (the charge can no longer be appealed) |
 
 ### Goal states
 
@@ -252,6 +303,32 @@ adapter (with only the HTTP layer replaced).
   once, then turned into a zero-confidence verdict.
 - **The server computes every amount** from the stored goal. The browser never
   sends an amount.
+- **A second model must agree before a verdict costs money.** A different model
+  re-reads the photo whenever the first verdict would charge the user or only
+  just cleared the threshold. If the two disagree, a person decides. The second
+  model can only make the result more cautious.
+
+### The two agents
+
+Both are multi-step, tool-calling agents on the same loop
+(`src/adapters/ai/agent-loop.ts`), and neither can move money.
+
+- **Goal agent** (`gemini-goal-agent.ts`): turns one sentence into a goal draft.
+  Its tools read the current time in the user's time zone, the user's earlier
+  goals and how they went, and run the app's own validation on its draft. It
+  saves nothing: the draft fills the form, the user confirms, and the server
+  validates again. It may use a stake only if the user stated one.
+- **Case agent** (`gemini-case-agent.ts`): advises the human reviewer. It
+  re-reads the photo and rules and checks the payment at PayPal through the
+  official **PayPal Agent Toolkit**. The toolkit is configured with five lookup
+  tools only (get order, get refund, list and get disputes, list transactions),
+  a second allowlist in `src/adapters/paypal/agent-tools.ts` refuses any other
+  tool name, and it is pinned to the sandbox. Its advice is stored on the case
+  and nothing acts on it.
+
+So the rule is: **a model may look payments up; it can never move money or name
+an amount.** Captures, voids, refunds and payouts are only ever issued by the
+deterministic code in the settlement, appeals and pacts modules.
 
 ## Settlement policy
 
@@ -286,13 +363,21 @@ third upload, when the user accepts it, or at the deadline.
 - One-tap holds: if the user agrees, the first hold saves their PayPal account
   (Vault). Later holds are created from the saved token with no sign-in. The
   token stays on the server.
+- Pacts: a captured stake is sent to the partner with the Payouts API once the
+  appeal window has closed. An open appeal pauses the payout; an upheld appeal
+  refunds the user and cancels it; once paid out, the charge can no longer be
+  appealed. If the partner never accepted, the money stays in the charity pool.
+- Webhooks: each event's signature is verified with PayPal before anything
+  else. An event is treated as a hint: the app then reads the payment back from
+  PayPal and acts on what it reads. A hold voided outside the app, or expired,
+  closes the goal as released. Each event is handled once.
 - Goals last **at most 3 days**, so the hold stays inside PayPal's honor period
   for an authorization. Validation enforces this.
 
 ## Tests
 
 ```bash
-npm test          # 242 tests
+npm test          # 250 tests
 npm run typecheck
 ```
 
@@ -304,6 +389,10 @@ npm run typecheck
   capture, required return addresses for Vault).
 - **AI adapter**: request shape, retries, malformed answers, code matching, and
   an injection attempt.
+- **Agents**: the tool loop, the step limit, and that the PayPal tools given to
+  the case agent are lookups only (writes are refused without calling PayPal).
+- **Pacts, webhooks, second opinion**: payout timing and appeals, signature
+  checks and replays, agreement and disagreement between the two models.
 
 Fakes appear only in tests. The running app always talks to the real PayPal
 sandbox and the real AI service.
@@ -332,9 +421,15 @@ public address from each request.
 - **One process.** The event bus, the scheduler and reviewer sessions live in
   memory, so the app must run as a single instance. Reviewers sign in again
   after a restart.
-- **No webhooks.** The app reads PayPal's state after each of its own calls. A
-  change made outside the app (for example a hold voided in the PayPal
-  dashboard) is only noticed at the next call.
+- **Webhooks need a public URL**, so they are off on localhost. Without them the
+  app still reads PayPal's state after each of its own calls.
+- **Pacts are a sandbox demonstration.** Paying a lost stake to another person
+  raises questions (money transmission, coercion between partners) that a real
+  product would need legal advice on. The short appeal window is for demos.
+- **`npm audit` reports issues in transitive dependencies** of
+  `@paypal/agent-toolkit` (LangChain, the Vercel AI SDK, the OpenAI client).
+  This app loads only the toolkit's plain tool-calling entry point and does not
+  import those integrations.
 - **Review can outlast the 3-day honor period.** PayPal usually still captures
   an older authorization, but no longer guarantees it.
 - **No email.** There is no address verification, password reset or reminder.

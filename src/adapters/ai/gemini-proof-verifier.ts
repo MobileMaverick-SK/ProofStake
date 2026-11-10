@@ -129,7 +129,20 @@ export class GeminiProofVerifier implements ProofVerifier {
     private readonly readProof: ReadProof,
   ) {}
 
+  get model(): string {
+    return this.gemini.model;
+  }
+
   async verify(input: { proofUrl: string; rules: ProofRules; challengeCode: string }): Promise<Verdict> {
+    return (
+      (await this.tryVerify(input)) ??
+      // Zero confidence sends the case to a human instead of moving money on a failed check.
+      cannotCheck(input.rules, 'The automatic check could not be completed, so a person will review this proof.')
+    );
+  }
+
+  /** Like `verify`, but null when the model could not be asked or did not answer usably. */
+  async tryVerify(input: { proofUrl: string; rules: ProofRules; challengeCode: string }): Promise<Verdict | null> {
     const photo = await this.readProof(input.proofUrl);
     if (!photo) return cannotCheck(input.rules, 'The uploaded photo could not be read.');
 
@@ -160,9 +173,8 @@ export class GeminiProofVerifier implements ProofVerifier {
       });
       return buildVerdict(answer, input.rules, input.challengeCode);
     } catch (error) {
-      logServerError('ai', `proof check failed: ${error instanceof Error ? error.message : String(error)}`);
-      // Zero confidence sends the case to a human instead of moving money on a failed check.
-      return cannotCheck(input.rules, 'The automatic check could not be completed, so a person will review this proof.');
+      logServerError('ai', `proof check failed (${this.gemini.model}): ${error instanceof Error ? error.message : String(error)}`);
+      return null;
     }
   }
 }
