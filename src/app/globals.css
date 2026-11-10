@@ -1807,3 +1807,22 @@ details.disclosure[open] > summary {
     display: none;
   }
 }
+
+/* Proof rules shown as statements, not as boxes to tick */
+.rule-marker {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin: 10px 9px 0;
+  border-radius: 50%;
+  background: var(--primary);
+}
+.optional-tag {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--surface-container-high, var(--surface-container));
+  color: var(--on-surface-variant);
+  font: 500 0.75rem/1.5 var(--font);
+}

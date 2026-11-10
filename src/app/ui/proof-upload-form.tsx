@@ -89,7 +89,7 @@ export function ProofUploadForm({ goalId, simulate }: { goalId: string; simulate
         </fieldset>
       ) : (
         <p className="body-small muted">
-          You get one upload. Make sure the work and your handwritten code are both clearly readable.
+          Make sure the work and your handwritten code are both clearly readable in the same photo.
         </p>
       )}
       <button

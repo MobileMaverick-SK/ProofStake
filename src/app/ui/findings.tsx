@@ -16,12 +16,13 @@ export function RulesList({ rules, verdict }: { rules: ProofRules; verdict?: Ver
                 label={result.passed ? 'Passed' : 'Not passed'}
               />
             ) : (
-              <Icon name="radio_button_unchecked" />
+              // A plain marker, not a box or circle, so it does not look like something to tick.
+              <span className="rule-marker" aria-hidden="true" />
             )}
             <div className="grow">
               <p>{check.description}</p>
               {result ? <p className="body-small muted">{result.reason}</p> : null}
-              {!check.required ? <p className="body-small muted">Optional</p> : null}
+              {!check.required ? <span className="optional-tag">Optional</span> : null}
             </div>
           </li>
         );
