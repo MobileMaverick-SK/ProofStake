@@ -2,6 +2,9 @@
 
 Put money on your own deadline. Keep it by proving you did the work.
 
+**Demo video (under 3 minutes):** https://youtu.be/2JtOEkTxWVY  
+**Live demo:** https://proofstake-production.up.railway.app
+
 ProofStake is a commitment app for people who work alone (students, freelancers,
 solo builders) and keep missing the deadlines they set for themselves. A to-do
 list costs nothing to ignore. ProofStake makes ignoring it cost something.
@@ -70,33 +73,49 @@ second opinion), called over its REST API.
 
 **https://proofstake-production.up.railway.app**
 
-You need two kinds of login: one for ProofStake itself, and a PayPal sandbox
-account for the PayPal popup. A real PayPal login does not work in the popup.
+Everything runs in the PayPal sandbox. No real money moves.
 
 | What | Where it is used | Login |
 |---|---|---|
-| ProofStake account | The app | Create your own on the sign-up page (any email works, nothing is sent) |
-| PayPal sandbox buyer | The PayPal popup when placing a hold | `FILL IN: sandbox personal email` / `FILL IN: password` |
-| Second PayPal sandbox buyer | A pact partner's payout email | `FILL IN: second sandbox personal email` |
-| Reviewer | `/review/login` | Password: `FILL IN` |
+| Demo user | The app, ready to use: a PayPal sandbox account is already saved, so holds take one tap | Given in the Devpost submission's testing instructions |
+| Your own ProofStake account | The app, if you prefer to start fresh | Create one on the sign-up page (any email works, nothing is sent) |
+| PayPal sandbox buyer | The PayPal popup, only needed with your own account | Given in the Devpost submission's testing instructions |
+| Second PayPal sandbox buyer | A pact partner's payout email | Given in the Devpost submission's testing instructions |
+| Reviewer | `/review/login` | Given in the Devpost submission's testing instructions |
+
+The logins are kept out of this public README so that nobody can change the
+shared sandbox accounts during judging. A real PayPal login does not work in
+the PayPal popup; use a sandbox buyer.
+
+To run it with your own PayPal sandbox accounts instead, follow
+[Run it on your own machine](#run-it-on-your-own-machine) and
+[PayPal sandbox setup](#paypal-sandbox-setup).
 
 The fastest path through everything, about 10 minutes:
 
-1. Sign up, then press **New goal** and type in the box at the top:
+1. Sign in as the demo user. Under **Goals**, open the finished examples: a
+   met goal (hold released, nothing charged) and a missed goal whose stake
+   PayPal Payouts sent to the pact partner.
+2. Press **New goal** and type in the box at the top:
    *"Write the word hello on paper in 15 minutes, $5, my friend Ravi gets it
-   if I don't"*. Press **Draft it for me**, then fill in Ravi's email with the
-   second sandbox buyer and press **Continue**.
-2. Accept the rules. Copy the invite link from the **Pact** card, open it in a
+   if I don't"*. Press **Draft it for me**, put the second sandbox buyer's
+   email as Ravi's email, and press **Continue**.
+3. Accept the rules. Copy the invite link from the **Pact** card, open it in a
    private window, and accept the pact.
-3. Place the hold with the PayPal button, signing in as the first sandbox buyer.
-4. To see a miss: on paper, write the one-time code shown on screen and a word
-   other than "hello". Photograph it and upload it. The check fails. Press
-   **Take this result as final**: $5 is charged. (Write "hello" instead to see
-   the hold released.)
-5. Watch both windows: within about 5 minutes the money is sent to the partner,
-   and the partner's page shows it arriving. Neither page needs refreshing.
-6. Sign in at `/review/login`, open **PayPal events** to see the webhooks PayPal
-   sent, and on any open case press **Ask the case agent**.
+4. Place the hold. With the demo user it takes one tap on the saved PayPal
+   account; with your own account, use the PayPal button and sign in as the
+   first sandbox buyer. Nothing is charged.
+5. On paper, write the one-time code shown on screen and the word "hello" to
+   see a pass, or another word to see a miss. Photograph it and upload it.
+   - Pass: the hold is voided and you pay nothing.
+   - Miss: press **Take this result as final**: $5 is charged. Within about
+     5 minutes, after the appeal window, the money is sent to the partner and
+     the partner's page shows it arriving. Neither page needs refreshing.
+6. Open the goal's **PayPal API calls** card to see every PayPal request,
+   matching the API Calls log in the PayPal developer dashboard.
+7. Sign in at `/review/login`, open **PayPal events** to see the webhooks
+   PayPal sent, and on any open case press **Ask the case agent**. Then
+   uphold the appeal (PayPal refunds it) or reject it.
 
 ## User guide
 
